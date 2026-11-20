@@ -1,0 +1,99 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "82e884f6150b14fc17fadddd32b8cc9f",
+    "entities": [
+      {
+        "tableName": "rencana_obat",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `namaLansia` TEXT NOT NULL, `stok` INTEGER NOT NULL, `batasStok` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "namaLansia",
+            "columnName": "namaLansia",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stok",
+            "columnName": "stok",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batasStok",
+            "columnName": "batasStok",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "jadwal_obat",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rencanaId` INTEGER NOT NULL, `jam` TEXT NOT NULL, `waktu` TEXT NOT NULL, `status` TEXT NOT NULL, PRIMARY KEY(`rencanaId`, `jam`), FOREIGN KEY(`rencanaId`) REFERENCES `rencana_obat`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "rencanaId",
+            "columnName": "rencanaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jam",
+            "columnName": "jam",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "waktu",
+            "columnName": "waktu",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "rencanaId",
+            "jam"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "rencana_obat",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "rencanaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '82e884f6150b14fc17fadddd32b8cc9f')"
+    ]
+  }
+}

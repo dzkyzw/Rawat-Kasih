@@ -1,0 +1,34 @@
+# Gradle, Kotlin, and Android build output
+.gradle/
+.kotlin/
+build/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Android Studio and machine-local settings
+/.idea/
+*.iml
+/captures/
+local.properties
+
+# Local secrets and signing keys
+keystore.properties
+secrets.properties
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Local database copies and diagnostics
+rawat-kasih.db
+rawat-kasih.db-wal
+rawat-kasih.db-shm
+rawat-kasih.db-journal
+*.log
+.DS_Store
+Thumbs.db
