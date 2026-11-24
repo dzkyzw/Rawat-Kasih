@@ -12,6 +12,10 @@ build/
 *.iml
 /captures/
 local.properties
+/app/google-services.json
+.firebase/
+/firebase/node_modules/
+/firebase/functions/node_modules/
 
 # Local secrets and signing keys
 keystore.properties

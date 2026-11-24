@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -67,15 +68,31 @@ private val GayaIsi = TextStyle(fontSize = 16.sp, lineHeight = 22.sp)
 private val GayaKeterangan = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
 
 @Composable
-internal fun ObatRoute(viewModel: ObatViewModel) {
+internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    if (state.perluMasuk) {
+        MaterialTheme(colorScheme = SkemaObat) {
+            ObatLoginScreen(state.sedangMasuk, state.pesanMasuk, viewModel::masuk)
+        }
+        return
+    }
+    if (state.adalahAdmin) {
+        MaterialTheme(colorScheme = SkemaObat, content = adminContent)
+        return
+    }
     val rencana = state.rencana
     if (rencana != null) {
         ObatScreen(
             state = rencana,
             statusSimpan = state.statusSimpan,
+            pesanSimpan = state.pesanSimpan,
+            pesanMuat = state.pesanMuat,
+            sedangMuatUlang = state.sedangMuatUlang,
             onBersihkanKesalahan = viewModel::hapusKesalahanSimpan,
-            onCatat = viewModel::catat
+            onCatat = viewModel::catat,
+            onKeluar = if (viewModel.modeOnline) viewModel::keluar else null,
+            onMuatUlang = if (viewModel.modeOnline) viewModel::segarkan else null,
+            onSimpanPengaturan = if (viewModel.modeOnline) viewModel::simpanPengaturan else null
         )
     } else {
         MaterialTheme(colorScheme = SkemaObat) {
@@ -89,8 +106,9 @@ internal fun ObatRoute(viewModel: ObatViewModel) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text("Jadwal obat gagal dimuat.")
+                            Text(state.pesanMuat ?: "Jadwal obat gagal dimuat.")
                             Button(onClick = viewModel::muat) { Text("Coba lagi") }
+                            if (viewModel.modeOnline) TextButton(onClick = viewModel::keluar) { Text("Keluar") }
                         }
                     } else {
                         CircularProgressIndicator()
@@ -105,15 +123,23 @@ internal fun ObatRoute(viewModel: ObatViewModel) {
 private fun ObatScreen(
     state: RencanaObat,
     statusSimpan: StatusSimpanObat = StatusSimpanObat.SIAP,
+    pesanSimpan: String? = null,
+    pesanMuat: String? = null,
+    sedangMuatUlang: Boolean = false,
     onBersihkanKesalahan: () -> Unit = {},
-    onCatat: (String, StatusJadwal) -> Unit
+    onCatat: (String, StatusJadwal) -> Unit,
+    onKeluar: (() -> Unit)? = null,
+    onMuatUlang: (() -> Unit)? = null,
+    onSimpanPengaturan: ((Int, Int?, String?, String?) -> Unit)? = null
 ) {
     var jamKonfirmasi by rememberSaveable { mutableStateOf<String?>(null) }
     var bukaStok by rememberSaveable { mutableStateOf(false) }
     val jadwal = state.jadwalBerikutnya
 
     MaterialTheme(colorScheme = SkemaObat) {
-        Scaffold(bottomBar = { PramuruktiBottomBar(tabAktif = TabPramurukti.BERANDA) }) { padding ->
+        Scaffold(bottomBar = {
+            if (state.bisaMengubah) PramuruktiBottomBar(tabAktif = TabPramurukti.BERANDA)
+        }) { padding ->
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 24.dp),
@@ -123,7 +149,22 @@ private fun ObatScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("${state.namaLansia.uppercase(Locale.ROOT)} · OBAT", style = GayaKeterangan)
                         Text("Jadwal obat", Modifier.semantics { heading() }, style = GayaJudul)
-                        Text("Senin, 16 November · Data contoh", style = GayaIsi, color = WarnaSekunder)
+                        val keterangan = when {
+                            onKeluar == null -> "Senin, 16 November · Data contoh"
+                            state.bisaMengubah -> "Demo online · Pramurukti"
+                            else -> "Demo online · Keluarga"
+                        }
+                        Text(keterangan, style = GayaIsi, color = WarnaSekunder)
+                        if (onKeluar != null && onMuatUlang != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val bisaKlik = statusSimpan != StatusSimpanObat.MENYIMPAN
+                                TextButton(onClick = onMuatUlang, enabled = bisaKlik && !sedangMuatUlang) {
+                                    Text(if (sedangMuatUlang) "Memuat…" else "Muat ulang")
+                                }
+                                TextButton(onClick = onKeluar, enabled = bisaKlik) { Text("Keluar") }
+                            }
+                        }
+                        if (pesanMuat != null) Text(pesanMuat, color = MaterialTheme.colorScheme.error)
                     }
                 }
                 item {
@@ -136,9 +177,12 @@ private fun ObatScreen(
                         KartuRingkasan("Jadwal hari ini selesai", "Semua jadwal sudah dikonfirmasi.")
                     }
                 }
-                if (jadwal != null) {
+                if (jadwal != null && state.bisaMengubah) {
                     item {
-                        TombolObat("Konfirmasi sudah diberikan") { jamKonfirmasi = jadwal.jam }
+                        TombolObat("Konfirmasi sudah diberikan") {
+                            onBersihkanKesalahan()
+                            jamKonfirmasi = jadwal.jam
+                        }
                     }
                 }
                 item {
@@ -151,25 +195,40 @@ private fun ObatScreen(
                         }
                     )
                 }
-                item { TombolObat("Kelola jadwal & stok") { bukaStok = true } }
-                item { Text("Riwayat hari ini", Modifier.semantics { heading() }, style = GayaBagian) }
+                if (state.bisaMengubah) {
+                    item {
+                        TombolObat("Kelola jadwal & stok") {
+                            onBersihkanKesalahan()
+                            bukaStok = true
+                        }
+                    }
+                }
+                item {
+                    Text(
+                        if (onKeluar == null) "Riwayat hari ini" else "Riwayat pemberian",
+                        Modifier.semantics { heading() },
+                        style = GayaBagian
+                    )
+                }
                 items(state.riwayat, key = { it.jam }) { catatan ->
-                    if (catatan.jam == "06.00") {
+                    if (onKeluar == null && catatan.jam == "06.00") {
                         KartuRingkasan("06.00 · Tercatat", "Pemberian dikonfirmasi oleh Rina.")
                     } else {
                         val label = if (catatan.status == StatusJadwal.DIMINUM) "Diminum" else "Dilewati"
-                        KartuRingkasan("${catatan.jam} · $label", "Jadwal ${catatan.waktu.lowercase(Locale.ROOT)} · Dicatat oleh Rina.")
+                        val petugas = if (onKeluar == null) " · Dicatat oleh Rina." else ""
+                        KartuRingkasan("${catatan.jam} · $label", "Jadwal ${catatan.waktu.lowercase(Locale.ROOT)}$petugas")
                     }
                 }
             }
         }
 
         val jam = jamKonfirmasi
-        if (jam != null && jadwal?.jam == jam) {
+        if (jam != null && jadwal?.jam == jam && state.bisaMengubah) {
             KonfirmasiJadwal(
                 jam = jam,
                 tersedia = state.stok > 0,
                 statusSimpan = statusSimpan,
+                pesanSimpan = pesanSimpan,
                 onTutup = {
                     jamKonfirmasi = null
                     onBersihkanKesalahan()
@@ -177,7 +236,18 @@ private fun ObatScreen(
                 onPilih = { status -> onCatat(jam, status) }
             )
         }
-        if (bukaStok) {
+        if (bukaStok && state.bisaMengubah && onSimpanPengaturan != null) {
+            ObatPengaturanDialog(
+                stok = state.stok,
+                status = statusSimpan,
+                pesan = pesanSimpan,
+                onTutup = {
+                    bukaStok = false
+                    onBersihkanKesalahan()
+                },
+                onSimpan = onSimpanPengaturan
+            )
+        } else if (bukaStok && state.bisaMengubah) {
             AlertDialog(
                 onDismissRequest = { bukaStok = false },
                 title = { Text("Jadwal & stok") },
@@ -196,13 +266,14 @@ private fun KonfirmasiJadwal(
     jam: String,
     tersedia: Boolean,
     statusSimpan: StatusSimpanObat,
+    pesanSimpan: String?,
     onTutup: () -> Unit,
     onPilih: (StatusJadwal) -> Unit
 ) {
     val sedangMenyimpan = statusSimpan == StatusSimpanObat.MENYIMPAN
     val pesan = when {
         sedangMenyimpan -> "Menyimpan konfirmasi…"
-        statusSimpan == StatusSimpanObat.GAGAL -> "Konfirmasi gagal disimpan. Silakan coba lagi."
+        statusSimpan == StatusSimpanObat.GAGAL -> pesanSimpan ?: "Konfirmasi gagal disimpan. Silakan coba lagi."
         tersedia -> "Pilih hasil pemberian obat."
         else -> "Stok habis. Jadwal dapat ditandai dilewati."
     }

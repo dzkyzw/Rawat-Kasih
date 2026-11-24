@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+if (layout.projectDirectory.file("google-services.json").asFile.isFile) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.example.rawatkasih"
     compileSdk {
@@ -16,11 +20,16 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("boolean", "FIREBASE_EMULATOR", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "FIREBASE_EMULATOR", providers.gradleProperty("firebaseEmulator")
+                .map { it.toBooleanStrict().toString() }.getOrElse("false"))
+        }
         release {
             optimization {
                 enable = false
@@ -33,6 +42,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -52,6 +62,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.room.runtime)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.kotlinx.coroutines.play.services)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -27,7 +27,8 @@ internal data class RencanaObat(
     val namaLansia: String,
     val stok: Int,
     val batasStok: Int,
-    val jadwal: List<JadwalObat>
+    val jadwal: List<JadwalObat>,
+    val bisaMengubah: Boolean = true
 ) {
     val jadwalBerikutnya: JadwalObat?
         get() = jadwal.firstOrNull { it.status == StatusJadwal.BELUM_DIKONFIRMASI }

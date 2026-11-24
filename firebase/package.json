@@ -1,0 +1,7 @@
+{
+  "name": "rawat-kasih-firebase",
+  "private": true,
+  "type": "module",
+  "scripts": { "seed:p04": "node seed-p04.mjs" },
+  "dependencies": { "firebase-admin": "14.5.1" }
+}

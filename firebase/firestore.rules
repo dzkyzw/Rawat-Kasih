@@ -1,0 +1,84 @@
+// aksesObat/{uid}: peran, and rencanaId for pramurukti and keluarga.
+// lansiaP04/{rencanaId}: namaLansia for the admin's selector.
+// rencanaObat/{rencanaId}: namaLansia, stok, batasStok, jadwal and aksi.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function punyaAkses(id) {
+      let akses = get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data;
+      return akses.rencanaId == id && akses.peran in ['PRAMURUKTI', 'KELUARGA'];
+    }
+
+    function pramurukti(id) {
+      let akses = get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data;
+      return akses.rencanaId == id && akses.peran == 'PRAMURUKTI';
+    }
+
+    function admin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data.peran == 'ADMIN';
+    }
+
+    function validAksesBaru(data) {
+      return data.keys().hasAll(['peran', 'rencanaId'])
+        && data.keys().hasOnly(['peran', 'rencanaId'])
+        && data.peran in ['PRAMURUKTI', 'KELUARGA']
+        && data.rencanaId is string && data.rencanaId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && exists(/databases/$(database)/documents/lansiaP04/$(data.rencanaId))
+        && exists(/databases/$(database)/documents/rencanaObat/$(data.rencanaId));
+    }
+
+    function jamValid(jam) {
+      return jam is string && jam.matches('^([01][0-9]|2[0-3])[.][0-5][0-9]$');
+    }
+
+    function validKonfirmasi(lama, baru, jam) {
+      return jamValid(jam) && jam in lama.jadwal && jam in baru.jadwal
+        && baru.jadwal.diff(lama.jadwal).affectedKeys().hasOnly([jam])
+        && lama.jadwal[jam].status == 'BELUM_DIKONFIRMASI'
+        && baru.jadwal[jam].keys().hasOnly(['waktu', 'status', 'dicatatOleh', 'dicatatPada'])
+        && baru.jadwal[jam].waktu == lama.jadwal[jam].waktu
+        && baru.jadwal[jam].dicatatOleh == request.auth.uid
+        && baru.jadwal[jam].dicatatPada == request.time
+        && ((baru.jadwal[jam].status == 'DIMINUM' && baru.stok == lama.stok - 1)
+          || (baru.jadwal[jam].status == 'DILEWATI' && baru.stok == lama.stok));
+    }
+
+    function validPengaturan(lama, baru, jam) {
+      return (jam == '' && baru.jadwal == lama.jadwal)
+        || (jamValid(jam) && !(jam in lama.jadwal) && jam in baru.jadwal
+          && baru.jadwal.size() <= 96
+          && baru.jadwal.diff(lama.jadwal).affectedKeys().hasOnly([jam])
+          && baru.jadwal[jam].keys().hasOnly(['waktu', 'status'])
+          && baru.jadwal[jam].status == 'BELUM_DIKONFIRMASI'
+          && baru.jadwal[jam].waktu is string
+          && baru.jadwal[jam].waktu.size() > 0
+          && baru.jadwal[jam].waktu.size() <= 40);
+    }
+
+    function perubahanValid() {
+      let lama = resource.data;
+      let baru = request.resource.data;
+      return baru.diff(lama).affectedKeys().hasOnly(['stok', 'jadwal', 'aksi'])
+        && baru.stok is int && baru.stok >= 0 && baru.stok <= 2147483647
+        && baru.jadwal is map && baru.aksi is map
+        && baru.aksi.keys().hasOnly(['jenis', 'jam'])
+        && ((baru.aksi.jenis == 'KONFIRMASI' && validKonfirmasi(lama, baru, baru.aksi.jam))
+          || (baru.aksi.jenis == 'PENGATURAN' && validPengaturan(lama, baru, baru.aksi.jam)));
+    }
+
+    match /aksesObat/{uid} {
+      allow get: if (request.auth != null && request.auth.uid == uid) || admin();
+      allow create: if admin() && request.auth.uid != uid && validAksesBaru(request.resource.data);
+    }
+
+    match /lansiaP04/{id} {
+      allow get, list: if admin();
+    }
+
+    match /rencanaObat/{id} {
+      allow get: if request.auth != null && punyaAkses(id);
+      allow update: if request.auth != null && pramurukti(id) && perubahanValid();
+    }
+  }
+}

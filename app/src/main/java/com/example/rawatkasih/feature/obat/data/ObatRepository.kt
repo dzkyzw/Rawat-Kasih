@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
-internal class ObatRepository(private val database: RawatKasihDatabase) {
+internal class ObatRepository(private val database: RawatKasihDatabase) : SumberObat {
     private val dao = database.obatDao()
 
-    fun amatiRencana() = flow {
+    override fun amatiRencana() = flow {
         database.withTransaction {
             if (dao.ambilRencana(ID_RENCANA_CONTOH) == null) {
                 val contoh = rencanaObatContoh()
@@ -31,7 +31,7 @@ internal class ObatRepository(private val database: RawatKasihDatabase) {
         emitAll(dao.amatiRencana(ID_RENCANA_CONTOH).map { checkNotNull(it).keModel() })
     }
 
-    suspend fun catat(jam: String, status: StatusJadwal) = database.withTransaction {
+    override suspend fun catat(jam: String, status: StatusJadwal) = database.withTransaction {
         val lama = checkNotNull(dao.ambilRencana(ID_RENCANA_CONTOH)).keModel()
         val baru = lama.catat(jam, status)
         if (baru == lama) return@withTransaction
