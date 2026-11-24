@@ -1,33 +1,78 @@
-// aksesObat/{uid}: peran, and rencanaId for pramurukti and keluarga.
-// lansiaP04/{rencanaId}: namaLansia for the admin's selector.
+// aksesObat/{uid}: peran, email, rencanaId (keluarga), or rencanaIds (pramurukti).
+// lansiaP04/{rencanaId}: namaLansia, kamar, and an optional primary family account.
 // rencanaObat/{rencanaId}: namaLansia, stok, batasStok, jadwal and aksi.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function punyaAkses(id) {
-      let akses = get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data;
-      return akses.rencanaId == id && akses.peran in ['PRAMURUKTI', 'KELUARGA'];
+    function aksesPengguna() {
+      return get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data;
     }
 
     function pramurukti(id) {
-      let akses = get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data;
-      return akses.rencanaId == id && akses.peran == 'PRAMURUKTI';
+      let akses = aksesPengguna();
+      return akses.peran == 'PRAMURUKTI' &&
+        id in akses.get('rencanaIds', [akses.get('rencanaId', '')]);
+    }
+
+    function keluarga(id) {
+      let akses = aksesPengguna();
+      let profil = get(/databases/$(database)/documents/lansiaP04/$(id)).data;
+      return akses.peran == 'KELUARGA' && akses.rencanaId == id &&
+        profil.get('keluargaUid', request.auth.uid) == request.auth.uid;
     }
 
     function admin() {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/aksesObat/$(request.auth.uid)).data.peran == 'ADMIN';
+      return request.auth != null && aksesPengguna().peran == 'ADMIN';
     }
 
-    function validAksesBaru(data) {
-      return data.keys().hasAll(['peran', 'rencanaId'])
-        && data.keys().hasOnly(['peran', 'rencanaId'])
-        && data.peran in ['PRAMURUKTI', 'KELUARGA']
-        && data.rencanaId is string && data.rencanaId.matches('^[A-Za-z0-9_-]{1,128}$')
-        && exists(/databases/$(database)/documents/lansiaP04/$(data.rencanaId))
-        && exists(/databases/$(database)/documents/rencanaObat/$(data.rencanaId));
+    function namaValid(nama) {
+      return nama is string && nama.size() > 0 && nama.size() <= 100;
     }
 
+    function emailValid(email) {
+      return email is string && email.size() <= 254 && email.matches('^[^ @]+@[^ @]+[.][^ @]+$');
+    }
+
+    function idValid(id) {
+      return id is string && id.matches('^[A-Za-z0-9_-]{1,128}$');
+    }
+
+    function validAkses(data, uid) {
+      let id = data.get('rencanaId', '_');
+      let profil = /databases/$(database)/documents/lansiaP04/$(id);
+      return (data.peran == 'PRAMURUKTI'
+        && data.keys().hasOnly(['peran', 'email', 'rencanaIds'])
+        && data.rencanaIds is list && data.rencanaIds.size() <= 50
+        && (!('email' in data) || emailValid(data.email)))
+        || (data.peran == 'KELUARGA'
+          && data.keys().hasOnly(['peran', 'email', 'rencanaId'])
+          && data.keys().hasAll(['peran', 'email', 'rencanaId'])
+          && idValid(id) && emailValid(data.email)
+          && getAfter(profil).data.keluargaUid == uid
+          && getAfter(profil).data.emailKeluarga == data.email);
+    }
+
+    function validProfil(data, id) {
+      let uid = data.get('keluargaUid', '_');
+      let akun = /databases/$(database)/documents/aksesObat/$(uid);
+      return idValid(id) && namaValid(data.namaLansia)
+        && data.keys().hasOnly(['namaLansia', 'kamar', 'keluargaUid', 'emailKeluarga'])
+        && data.kamar is string && data.kamar.size() <= 40
+        && getAfter(/databases/$(database)/documents/rencanaObat/$(id)).data.namaLansia == data.namaLansia
+        && ((!('keluargaUid' in data) && !('emailKeluarga' in data))
+          || (idValid(uid) && emailValid(data.emailKeluarga)
+            && getAfter(akun).data.peran == 'KELUARGA'
+            && getAfter(akun).data.rencanaId == id
+            && getAfter(akun).data.email == data.emailKeluarga));
+    }
+
+    function validRencanaAwal(data, id) {
+      return data.keys().hasOnly(['namaLansia', 'stok', 'batasStok', 'aksi', 'jadwal'])
+        && namaValid(data.namaLansia)
+        && getAfter(/databases/$(database)/documents/lansiaP04/$(id)).data.namaLansia == data.namaLansia
+        && data.stok is int && data.stok == 0 && data.batasStok is int && data.batasStok == 4
+        && data.aksi == {'jenis': 'AWAL', 'jam': ''} && data.jadwal == {};
+    }
     function jamValid(jam) {
       return jam is string && jam.matches('^([01][0-9]|2[0-3])[.][0-5][0-9]$');
     }
@@ -69,16 +114,28 @@ service cloud.firestore {
 
     match /aksesObat/{uid} {
       allow get: if (request.auth != null && request.auth.uid == uid) || admin();
-      allow create: if admin() && request.auth.uid != uid && validAksesBaru(request.resource.data);
+      allow list: if admin() && resource.data.peran == 'PRAMURUKTI';
+      allow create: if admin() && request.auth.uid != uid && validAkses(request.resource.data, uid);
+      allow update: if admin() && request.auth.uid != uid
+        && resource.data.peran == request.resource.data.peran
+        && (resource.data.peran != 'KELUARGA' || resource.data.rencanaId == request.resource.data.rencanaId)
+        && validAkses(request.resource.data, uid);
     }
 
     match /lansiaP04/{id} {
       allow get, list: if admin();
+      allow create, update: if admin() && validProfil(request.resource.data, id);
     }
 
     match /rencanaObat/{id} {
-      allow get: if request.auth != null && punyaAkses(id);
-      allow update: if request.auth != null && pramurukti(id) && perubahanValid();
+      allow get: if admin() || (request.auth != null && (pramurukti(id) || keluarga(id)));
+      allow create: if admin() && validRencanaAwal(request.resource.data, id);
+      allow update: if (request.auth != null && pramurukti(id) && perubahanValid())
+        || (admin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['namaLansia'])
+          && namaValid(request.resource.data.namaLansia)
+          && getAfter(/databases/$(database)/documents/lansiaP04/$(id)).data.namaLansia
+            == request.resource.data.namaLansia);
     }
   }
 }
+

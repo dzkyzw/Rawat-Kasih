@@ -12,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
@@ -32,33 +34,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.rawatkasih.feature.admin.data.PeranAkun
+import com.example.rawatkasih.ui.admin.AdminUiState
 import com.example.rawatkasih.ui.admin.AdminViewModel
+import java.util.UUID
 
 @Composable
-internal fun AdminRoute(viewModel: AdminViewModel, onKeluar: () -> Unit) {
+internal fun AdminRoute(viewModel: AdminViewModel, onProfil: () -> Unit, onKeluar: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var email by rememberSaveable { mutableStateOf("") }
-    var kataSandi by remember { mutableStateOf("") }
-    var peran by rememberSaveable { mutableStateOf<PeranAkun?>(null) }
-    var rencanaId by rememberSaveable { mutableStateOf<String?>(null) }
-    val lansia = state.lansia.firstOrNull { it.id == rencanaId }
-    val fokus = LocalFocusManager.current
-    val inputAktif = !state.sedangMembuat
-
+    var kelolaStaf by rememberSaveable { mutableStateOf(false) }
+    val aktif = !state.sedangMemuat && !state.sedangMenyimpan
     LaunchedEffect(viewModel) { viewModel.muat() }
-    LaunchedEffect(state.pesanBerhasil) {
-        if (state.pesanBerhasil != null) {
-            email = ""
-            kataSandi = ""
-        }
-    }
 
     Scaffold { padding ->
         Column(
@@ -67,58 +60,155 @@ internal fun AdminRoute(viewModel: AdminViewModel, onKeluar: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Buat akun", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
-                TextButton(onClick = onKeluar, enabled = inputAktif) { Text("Keluar") }
+                Text("Pengelola Panti", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+                TextButton(onClick = onKeluar, enabled = aktif) { Text("Keluar") }
             }
-            if (state.sedangMemuat) LinearProgressIndicator(Modifier.fillMaxWidth())
-            val pesanDaftar = state.gagalMemuat
-            if (pesanDaftar != null) {
-                PesanAdmin(pesanDaftar, gagal = true)
-                OutlinedButton(onClick = viewModel::muat) { Text("Coba lagi") }
-            } else if (!state.sedangMemuat && state.lansia.isEmpty()) {
-                Text("Belum ada rencana obat lansia yang bisa dipilih.")
-                OutlinedButton(onClick = viewModel::muat) { Text("Muat ulang") }
+            TextButton(onClick = onProfil, enabled = aktif) { Text("Profil") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !kelolaStaf, enabled = aktif, onClick = { kelolaStaf = false }, label = { Text("Lansia") })
+                FilterChip(selected = kelolaStaf, enabled = aktif, onClick = { kelolaStaf = true }, label = { Text("Pramurukti") })
             }
-            PilihanAdmin("Peran", peran?.label, PeranAkun.entries, { it.label }, inputAktif) { peran = it }
-            PilihanAdmin("Lansia", lansia?.nama, state.lansia, { it.nama }, inputAktif) { rencanaId = it.id }
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Email") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                singleLine = true,
-                enabled = inputAktif
-            )
-            OutlinedTextField(
-                value = kataSandi,
-                onValueChange = { kataSandi = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Kata sandi awal") },
-                supportingText = { Text("Minimal 8 karakter") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-                enabled = inputAktif
-            )
+            if (!aktif) LinearProgressIndicator(Modifier.fillMaxWidth())
+            state.gagalMemuat?.let {
+                PesanAdmin(it, gagal = true)
+                OutlinedButton(onClick = viewModel::muat, enabled = aktif) { Text("Muat ulang") }
+            }
             state.pesanError?.let { PesanAdmin(it, gagal = true) }
             state.pesanBerhasil?.let { PesanAdmin(it, gagal = false) }
-            Button(
-                onClick = {
-                    val pilihanPeran = peran
-                    if (pilihanPeran != null && lansia != null) {
-                        fokus.clearFocus()
-                        viewModel.buatAkun(email, kataSandi, pilihanPeran, lansia.id)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = inputAktif && email.isNotBlank() && kataSandi.length in 8..128 &&
-                    peran != null && lansia != null
-            ) {
-                Text(if (state.sedangMembuat) "Membuat akun…" else "Buat akun")
+            if (kelolaStaf) PanelPramurukti(state, aktif, viewModel)
+            else PanelLansia(state, aktif, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun PanelLansia(state: AdminUiState, aktif: Boolean, viewModel: AdminViewModel) {
+    var lansiaId by rememberSaveable { mutableStateOf<String?>(null) }
+    var idBaru by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    val profil = state.lansia.firstOrNull { it.id == lansiaId }
+    val fokus = LocalFocusManager.current
+
+    LaunchedEffect(state.lansiaTersimpan) {
+        val id = state.lansiaTersimpan
+        if (id == idBaru) {
+            lansiaId = id
+            idBaru = UUID.randomUUID().toString()
+        }
+    }
+
+    PilihanAdmin("Lansia", profil?.nama, state.lansia, { it.nama }, aktif) { lansiaId = it.id }
+    if (lansiaId != null) {
+        TextButton(onClick = { lansiaId = null; idBaru = UUID.randomUUID().toString() }, enabled = aktif) {
+            Text("Tambah lansia")
+        }
+    }
+    Text(if (lansiaId == null) "Tambah lansia" else "Edit profil lansia", style = MaterialTheme.typography.titleMedium)
+
+    val idForm = lansiaId ?: idBaru
+    var nama by rememberSaveable(idForm) { mutableStateOf(profil?.nama.orEmpty()) }
+    var kamar by rememberSaveable(idForm) { mutableStateOf(profil?.kamar.orEmpty()) }
+    var email by rememberSaveable(idForm) { mutableStateOf("") }
+    var kataSandi by remember(idForm) { mutableStateOf("") }
+    LaunchedEffect(state.pesanBerhasil) {
+        if (state.lansiaTersimpan == idForm) {
+            email = ""
+            kataSandi = ""
+        }
+    }
+
+    KolomAdmin("Nama lansia", nama, { nama = it }, aktif)
+    KolomAdmin("Nomor kamar (opsional)", kamar, { kamar = it }, aktif)
+    Text("Kontak keluarga (opsional)", style = MaterialTheme.typography.titleMedium)
+    val emailAktif = profil?.emailKeluarga
+    if (emailAktif != null) {
+        Text("Terhubung ke ${emailAktif}.")
+        TombolTautan(emailAktif, aktif, viewModel)
+    }
+    KolomAdmin(if (emailAktif == null) "Email keluarga" else "Email keluarga pengganti", email, { email = it }, aktif, KeyboardType.Email)
+    if (email.isNotBlank() || kataSandi.isNotEmpty()) {
+        KolomAdmin("Kata sandi awal", kataSandi, { kataSandi = it }, aktif, KeyboardType.Password)
+        if (emailAktif != null && !email.trim().equals(emailAktif, ignoreCase = true)) {
+            Text("Akses akun keluarga sebelumnya akan berakhir setelah penggantian disimpan.")
+        }
+    }
+    Button(
+        onClick = { fokus.clearFocus(); viewModel.simpanLansia(idForm, nama, kamar, email, kataSandi) },
+        enabled = aktif && nama.trim().length in 1..100 && kamar.trim().length <= 40,
+        modifier = Modifier.fillMaxWidth()
+    ) { Text("Simpan profil lansia") }
+}
+
+@Composable
+private fun PanelPramurukti(state: AdminUiState, aktif: Boolean, viewModel: AdminViewModel) {
+    var email by rememberSaveable { mutableStateOf("") }
+    var kataSandi by remember { mutableStateOf("") }
+    var stafUid by rememberSaveable { mutableStateOf<String?>(null) }
+    val staf = state.pramurukti.firstOrNull { it.uid == stafUid }
+    val fokus = LocalFocusManager.current
+    LaunchedEffect(state.emailPramuruktiTersimpan) {
+        val tersimpan = state.emailPramuruktiTersimpan
+        if (tersimpan != null) {
+            stafUid = state.pramurukti.firstOrNull { it.email.equals(tersimpan, ignoreCase = true) }?.uid
+            email = ""
+            kataSandi = ""
+        }
+    }
+
+    Text("Buat akun pramurukti", style = MaterialTheme.typography.titleMedium)
+    KolomAdmin("Email pramurukti", email, { email = it }, aktif, KeyboardType.Email)
+    KolomAdmin("Kata sandi awal", kataSandi, { kataSandi = it }, aktif, KeyboardType.Password)
+    Button(
+        onClick = { fokus.clearFocus(); viewModel.buatPramurukti(email, kataSandi) },
+        enabled = aktif && email.isNotBlank() && kataSandi.length in 8..128,
+        modifier = Modifier.fillMaxWidth()
+    ) { Text("Buat akun pramurukti") }
+
+    Text("Penugasan lansia", style = MaterialTheme.typography.titleMedium)
+    PilihanAdmin("Pramurukti", staf?.email, state.pramurukti, { it.email }, aktif) { stafUid = it.uid }
+    if (staf != null) {
+        if ('@' in staf.email) TombolTautan(staf.email, aktif, viewModel)
+        if (state.lansia.isEmpty()) Text("Tambahkan profil lansia untuk mulai menugaskan.")
+        for (lansia in state.lansia) {
+            val ditugaskan = lansia.id in staf.rencanaIds
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = ditugaskan,
+                    onCheckedChange = { viewModel.ubahPenugasan(staf.uid, lansia.id, it) },
+                    enabled = aktif,
+                    modifier = Modifier.semantics { contentDescription = lansia.nama }
+                )
+                Text(lansia.nama)
             }
         }
     }
+}
+
+@Composable
+private fun TombolTautan(email: String, aktif: Boolean, viewModel: AdminViewModel) {
+    TextButton(onClick = { viewModel.kirimTautanSandi(email) }, enabled = aktif) {
+        Text("Kirim tautan atur kata sandi")
+    }
+}
+
+@Composable
+private fun KolomAdmin(
+    label: String,
+    nilai: String,
+    ubah: (String) -> Unit,
+    aktif: Boolean,
+    jenis: KeyboardType = KeyboardType.Text
+) {
+    OutlinedTextField(
+        value = nilai,
+        onValueChange = ubah,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = jenis),
+        visualTransformation = if (jenis == KeyboardType.Password) PasswordVisualTransformation() else VisualTransformation.None,
+        supportingText = if (jenis == KeyboardType.Password) ({ Text("Minimal 8 karakter") }) else null,
+        singleLine = true,
+        enabled = aktif
+    )
 }
 
 @Composable

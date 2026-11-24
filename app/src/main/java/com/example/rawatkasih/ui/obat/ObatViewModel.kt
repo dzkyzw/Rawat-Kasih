@@ -11,6 +11,7 @@ import com.example.rawatkasih.feature.obat.data.remote.SesiFirebaseBerakhir
 import com.example.rawatkasih.feature.obat.model.StatusJadwal
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
     private val online = repository as? FirebaseObatRepository
     val modeOnline = online != null
+    val emailAktif: String? get() = online?.emailAktif
     private val _state = MutableStateFlow(ObatUiState(perluMasuk = online?.sudahMasuk == false))
     val state = _state.asStateFlow()
     private var pekerjaanMuat: Job? = null
@@ -56,9 +58,57 @@ internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
         }
     }
 
+    fun gantiKataSandi(lama: String, baru: String, konfirmasi: String) {
+        val sumber = online ?: return
+        val saatIni = _state.value
+        if (saatIni.perluMasuk || saatIni.sedangGantiSandi || saatIni.sandiDiubah) return
+        val validasi = when {
+            lama.isEmpty() -> "Isi kata sandi lama."
+            baru.length !in 8..128 -> "Kata sandi baru harus 8–128 karakter."
+            baru == lama -> "Pilih kata sandi yang berbeda dari sebelumnya."
+            konfirmasi != baru -> "Konfirmasi kata sandi baru belum cocok."
+            else -> null
+        }
+        if (validasi != null) {
+            _state.update { it.copy(pesanGantiSandi = validasi) }
+            return
+        }
+        _state.update { it.copy(sedangGantiSandi = true, pesanGantiSandi = null) }
+        viewModelScope.launch {
+            try {
+                sumber.gantiKataSandi(lama, baru)
+                _state.update { it.copy(sedangGantiSandi = false, sandiDiubah = true) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                when (error) {
+                    is SesiFirebaseBerakhir, is FirebaseAuthInvalidUserException -> {
+                        sumber.keluar()
+                        tampilkanSesiBerakhir()
+                    }
+                    else -> {
+                        val pesan = when (error) {
+                            is FirebaseAuthWeakPasswordException -> "Kata sandi baru belum memenuhi syarat Firebase."
+                            is FirebaseAuthInvalidCredentialsException -> "Kata sandi lama tidak cocok."
+                            else -> "Perubahan belum bisa dikonfirmasi. Periksa koneksi dan coba lagi."
+                        }
+                        _state.update { it.copy(sedangGantiSandi = false, pesanGantiSandi = pesan) }
+                    }
+                }
+            }
+        }
+    }
+
+    fun resetGantiSandi() {
+        if (!_state.value.sedangGantiSandi) {
+            _state.update { it.copy(sandiDiubah = false, pesanGantiSandi = null) }
+        }
+    }
+
     fun keluar() {
         val sumber = online ?: return
-        if (_state.value.statusSimpan == StatusSimpanObat.MENYIMPAN) return
+        val saatIni = _state.value
+        if (saatIni.statusSimpan == StatusSimpanObat.MENYIMPAN || saatIni.sedangGantiSandi) return
         pekerjaanMuat?.cancel()
         pekerjaanSegarkan?.cancel()
         pekerjaanMuat = null
@@ -72,11 +122,26 @@ internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
         _state.update { it.copy(gagalMemuat = false, pesanMuat = null) }
         pekerjaanMuat = viewModelScope.launch {
             flow {
-                if (online?.adalahAdmin() == true) {
-                    _state.update { it.copy(adalahAdmin = true) }
-                } else {
-                    emitAll(repository.amatiRencana())
+                val sumber = online
+                if (sumber != null) {
+                    val peran = sumber.peran()
+                    _state.update { it.copy(peranAkun = peran) }
+                    when (peran) {
+                        "ADMIN" -> return@flow
+                        "PRAMURUKTI" -> {
+                            val id = _state.value.lansiaId
+                            if (id == null) {
+                                val daftar = sumber.daftarPenugasan()
+                                _state.update { it.copy(daftarLansia = daftar) }
+                                return@flow
+                            }
+                            sumber.pilihLansia(id)
+                        }
+                        "KELUARGA" -> Unit
+                        else -> throw AksesObatDitolak()
+                    }
                 }
+                emitAll(repository.amatiRencana())
             }
                 .catch { error ->
                     if (error is SesiFirebaseBerakhir) {
@@ -88,6 +153,22 @@ internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
                 }
                 .collect { rencana -> _state.update { it.copy(rencana = rencana) } }
         }
+    }
+
+    fun pilihLansia(id: String) {
+        if (_state.value.daftarLansia?.none { it.id == id } != false) return
+        bukaRencana(id)
+    }
+
+    fun gantiLansia() = bukaRencana(null)
+
+    private fun bukaRencana(id: String?) {
+        val sekarang = _state.value
+        if (sekarang.statusSimpan == StatusSimpanObat.MENYIMPAN || sekarang.sedangMuatUlang) return
+        pekerjaanMuat?.cancel()
+        pekerjaanMuat = null
+        _state.value = ObatUiState(lansiaId = id)
+        muat()
     }
 
     fun segarkan() {

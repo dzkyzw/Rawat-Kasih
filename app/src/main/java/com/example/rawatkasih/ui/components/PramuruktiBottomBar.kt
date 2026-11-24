@@ -28,6 +28,7 @@ internal enum class TabPramurukti(val label: String, @get:DrawableRes val ikon: 
 @Composable
 internal fun PramuruktiBottomBar(
     tabAktif: TabPramurukti,
+    tabTersedia: Set<TabPramurukti> = TabPramurukti.entries.toSet(),
     onPilihTab: ((TabPramurukti) -> Unit)? = null
 ) {
     val warnaTeks = Color(0xFF111111)
@@ -47,7 +48,7 @@ internal fun PramuruktiBottomBar(
             NavigationBarItem(
                 selected = tab == tabAktif,
                 onClick = { onPilihTab?.invoke(tab) },
-                enabled = onPilihTab != null,
+                enabled = onPilihTab != null && tab in tabTersedia,
                 icon = {
                     Image(
                         painter = painterResource(tab.ikon),

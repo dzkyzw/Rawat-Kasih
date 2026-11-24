@@ -17,6 +17,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +45,7 @@ import com.example.rawatkasih.feature.obat.model.StatusJadwal
 import com.example.rawatkasih.feature.obat.model.rencanaObatContoh
 import com.example.rawatkasih.ui.components.PramuruktiBottomBar
 import com.example.rawatkasih.ui.components.TabPramurukti
+import com.example.rawatkasih.ui.obat.ObatUiState
 import com.example.rawatkasih.ui.obat.ObatViewModel
 import com.example.rawatkasih.ui.obat.StatusSimpanObat
 import java.util.Locale
@@ -68,7 +71,7 @@ private val GayaIsi = TextStyle(fontSize = 16.sp, lineHeight = 22.sp)
 private val GayaKeterangan = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
 
 @Composable
-internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable () -> Unit) {
+internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable (onProfil: () -> Unit) -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.perluMasuk) {
         MaterialTheme(colorScheme = SkemaObat) {
@@ -76,8 +79,62 @@ internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable () ->
         }
         return
     }
-    if (state.adalahAdmin) {
-        MaterialTheme(colorScheme = SkemaObat, content = adminContent)
+
+    var profilTerbuka by rememberSaveable { mutableStateOf(false) }
+    val layarUtama = rememberSaveableStateHolder()
+    val bukaProfil = { profilTerbuka = true }
+    if (profilTerbuka && viewModel.modeOnline) {
+        MaterialTheme(colorScheme = SkemaObat) {
+            ProfilScreen(
+                email = viewModel.emailAktif,
+                peran = state.peranAkun,
+                sedangGantiSandi = state.sedangGantiSandi,
+                sandiDiubah = state.sandiDiubah,
+                pesanGantiSandi = state.pesanGantiSandi,
+                onGantiSandi = viewModel::gantiKataSandi,
+                onTutupDialogSandi = viewModel::resetGantiSandi,
+                onKembali = { profilTerbuka = false }
+            )
+        }
+    } else {
+        layarUtama.SaveableStateProvider("utama") {
+            if (state.peranAkun == "ADMIN") {
+                MaterialTheme(colorScheme = SkemaObat) { adminContent(bukaProfil) }
+            } else {
+                KontenObat(state, viewModel, bukaProfil)
+            }
+        }
+    }
+}
+
+@Composable
+private fun KontenObat(state: ObatUiState, viewModel: ObatViewModel, bukaProfil: () -> Unit) {
+    val daftar = state.daftarLansia
+    if (daftar != null) {
+        MaterialTheme(colorScheme = SkemaObat) {
+            Scaffold { padding ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item { Text("Lansia yang ditugaskan", style = MaterialTheme.typography.headlineSmall) }
+                    if (daftar.isEmpty()) {
+                        item { Text("Belum ada penugasan. Hubungi pengelola panti.") }
+                    }
+                    items(daftar, key = { it.id }) { lansia ->
+                        OutlinedButton(onClick = { viewModel.pilihLansia(lansia.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(lansia.nama)
+                        }
+                    }
+                    item {
+                        TextButton(onClick = viewModel::gantiLansia) { Text("Muat ulang") }
+                        TextButton(onClick = bukaProfil) { Text("Profil") }
+                        TextButton(onClick = viewModel::keluar) { Text("Keluar") }
+                    }
+                }
+            }
+        }
         return
     }
     val rencana = state.rencana
@@ -92,6 +149,8 @@ internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable () ->
             onCatat = viewModel::catat,
             onKeluar = if (viewModel.modeOnline) viewModel::keluar else null,
             onMuatUlang = if (viewModel.modeOnline) viewModel::segarkan else null,
+            onProfil = if (viewModel.modeOnline) bukaProfil else null,
+            onGantiLansia = if (state.lansiaId != null) viewModel::gantiLansia else null,
             onSimpanPengaturan = if (viewModel.modeOnline) viewModel::simpanPengaturan else null
         )
     } else {
@@ -108,7 +167,13 @@ internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable () ->
                         ) {
                             Text(state.pesanMuat ?: "Jadwal obat gagal dimuat.")
                             Button(onClick = viewModel::muat) { Text("Coba lagi") }
-                            if (viewModel.modeOnline) TextButton(onClick = viewModel::keluar) { Text("Keluar") }
+                            if (state.lansiaId != null) {
+                                TextButton(onClick = viewModel::gantiLansia) { Text("Pilih lansia lain") }
+                            }
+                            if (viewModel.modeOnline) {
+                                TextButton(onClick = bukaProfil) { Text("Profil") }
+                                TextButton(onClick = viewModel::keluar) { Text("Keluar") }
+                            }
                         }
                     } else {
                         CircularProgressIndicator()
@@ -130,6 +195,8 @@ private fun ObatScreen(
     onCatat: (String, StatusJadwal) -> Unit,
     onKeluar: (() -> Unit)? = null,
     onMuatUlang: (() -> Unit)? = null,
+    onGantiLansia: (() -> Unit)? = null,
+    onProfil: (() -> Unit)? = null,
     onSimpanPengaturan: ((Int, Int?, String?, String?) -> Unit)? = null
 ) {
     var jamKonfirmasi by rememberSaveable { mutableStateOf<String?>(null) }
@@ -138,7 +205,15 @@ private fun ObatScreen(
 
     MaterialTheme(colorScheme = SkemaObat) {
         Scaffold(bottomBar = {
-            if (state.bisaMengubah) PramuruktiBottomBar(tabAktif = TabPramurukti.BERANDA)
+            if (state.bisaMengubah) {
+                PramuruktiBottomBar(
+                    tabAktif = TabPramurukti.BERANDA,
+                    tabTersedia = setOf(TabPramurukti.AKUN),
+                    onPilihTab = if (onProfil != null && statusSimpan != StatusSimpanObat.MENYIMPAN) {
+                        { onProfil() }
+                    } else null
+                )
+            }
         }) { padding ->
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -164,6 +239,17 @@ private fun ObatScreen(
                                 TextButton(onClick = onKeluar, enabled = bisaKlik) { Text("Keluar") }
                             }
                         }
+                        if (onProfil != null && !state.bisaMengubah) {
+                            TextButton(onClick = onProfil, enabled = statusSimpan != StatusSimpanObat.MENYIMPAN) {
+                                Text("Profil")
+                            }
+                        }
+                        if (onGantiLansia != null) {
+                            OutlinedButton(
+                                onClick = onGantiLansia,
+                                enabled = statusSimpan != StatusSimpanObat.MENYIMPAN && !sedangMuatUlang
+                            ) { Text("Ganti lansia") }
+                        }
                         if (pesanMuat != null) Text(pesanMuat, color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -174,7 +260,11 @@ private fun ObatScreen(
                             "Nama obat · Dosis sesuai resep\nSesudah makan · Belum dikonfirmasi"
                         )
                     } else {
-                        KartuRingkasan("Jadwal hari ini selesai", "Semua jadwal sudah dikonfirmasi.")
+                        if (state.jadwal.isEmpty()) {
+                            KartuRingkasan("Belum ada jadwal obat", "Jadwal muncul setelah ditambahkan oleh pramurukti.")
+                        } else {
+                            KartuRingkasan("Jadwal hari ini selesai", "Semua jadwal sudah dikonfirmasi.")
+                        }
                     }
                 }
                 if (jadwal != null && state.bisaMengubah) {

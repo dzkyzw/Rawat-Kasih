@@ -53,3 +53,5 @@ internal class FirebaseP04 private constructor(
         }
     }
 }
+internal fun idsPenugasan(daftar: Any?, lama: String?): List<String> =
+    ((daftar as? List<*>)?.filterIsInstance<String>() ?: listOfNotNull(lama)).distinct()

@@ -1,9 +1,11 @@
 package com.example.rawatkasih.feature.obat.data.remote
 
+import com.example.rawatkasih.data.remote.idsPenugasan
 import com.example.rawatkasih.feature.obat.data.SumberObat
 import com.example.rawatkasih.feature.obat.model.JadwalObat
 import com.example.rawatkasih.feature.obat.model.RencanaObat
 import com.example.rawatkasih.feature.obat.model.StatusJadwal
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
@@ -19,6 +21,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
+internal data class PilihanLansiaObat(val id: String, val nama: String)
+
 internal class SesiFirebaseBerakhir : IllegalStateException()
 internal class AksesObatDitolak : IllegalStateException()
 internal class KonflikObat(val pesan: String) : IllegalStateException(pesan)
@@ -29,19 +33,52 @@ internal class FirebaseObatRepository(
 ) : SumberObat {
     private val mutex = Mutex()
     private val rencana = MutableStateFlow<RencanaObat?>(null)
+    private var rencanaDipilih: String? = null
+    val emailAktif: String?
+        get() = auth.currentUser?.email
+
     val sudahMasuk: Boolean
         get() = auth.currentUser != null
 
-    suspend fun adalahAdmin(): Boolean = firestore.collection("aksesObat").document(uidAktif())
-        .get(Source.SERVER).await().getString("peran") == "ADMIN"
+    suspend fun peran(): String? = dokumenAkses().getString("peran")
+
+    suspend fun daftarPenugasan(): List<PilihanLansiaObat> =
+        daftarId(dokumenAkses()).map { id ->
+            val nama = firestore.collection("rencanaObat").document(id)
+                .get(Source.SERVER).await().getString("namaLansia") ?: throw AksesObatDitolak()
+            PilihanLansiaObat(id, nama)
+        }.sortedBy { it.nama }
+
+    suspend fun pilihLansia(id: String) {
+        mutex.withLock {
+            rencanaDipilih = id
+            rencana.value = null
+        }
+    }
+
+    private suspend fun dokumenAkses(): DocumentSnapshot =
+        firestore.collection("aksesObat").document(uidAktif()).get(Source.SERVER).await()
+
+    private fun daftarId(akses: DocumentSnapshot) =
+        idsPenugasan(akses.get("rencanaIds"), akses.getString("rencanaId"))
 
     suspend fun masuk(email: String, password: String) {
         mutex.withLock { auth.signInWithEmailAndPassword(email, password).await() }
     }
 
+    suspend fun gantiKataSandi(lama: String, baru: String) {
+        mutex.withLock {
+            val pengguna = auth.currentUser ?: throw SesiFirebaseBerakhir()
+            val email = pengguna.email ?: throw SesiFirebaseBerakhir()
+            pengguna.reauthenticate(EmailAuthProvider.getCredential(email, lama)).await()
+            pengguna.updatePassword(baru).await()
+        }
+    }
+
     suspend fun keluar() {
         mutex.withLock {
             auth.signOut()
+            rencanaDipilih = null
             rencana.value = null
         }
     }
@@ -53,8 +90,7 @@ internal class FirebaseObatRepository(
 
     suspend fun segarkan() {
         mutex.withLock {
-            val uid = uidAktif()
-            val akses = bacaAkses(firestore.collection("aksesObat").document(uid).get(Source.SERVER).await())
+            val akses = bacaAkses(dokumenAkses())
             val dokumen = akses.rencana.get(Source.SERVER).await()
             rencana.value = bacaRencana(dokumen, akses.bisaMengubah)
         }
@@ -128,9 +164,13 @@ internal class FirebaseObatRepository(
     private data class Akses(val rencana: DocumentReference, val bisaMengubah: Boolean)
 
     private fun bacaAkses(dokumen: DocumentSnapshot): Akses {
-        val rencanaId = dokumen.getString("rencanaId") ?: throw AksesObatDitolak()
         val peran = dokumen.getString("peran")
-        if (peran != "PRAMURUKTI" && peran != "KELUARGA") throw AksesObatDitolak()
+        val ids = daftarId(dokumen)
+        val rencanaId = when (peran) {
+            "KELUARGA" -> ids.singleOrNull()
+            "PRAMURUKTI" -> rencanaDipilih?.takeIf { it in ids } ?: if (rencanaDipilih == null) ids.singleOrNull() else null
+            else -> null
+        } ?: throw AksesObatDitolak()
         return Akses(firestore.collection("rencanaObat").document(rencanaId), peran == "PRAMURUKTI")
     }
 

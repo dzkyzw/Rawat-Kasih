@@ -52,8 +52,8 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             RawatKasihTheme {
-                ObatRoute(obatViewModel) {
-                    AdminRoute(adminViewModel, onKeluar = {
+                ObatRoute(obatViewModel) { bukaProfil ->
+                    AdminRoute(adminViewModel, onProfil = bukaProfil, onKeluar = {
                         adminViewModel.reset()
                         obatViewModel.keluar()
                     })

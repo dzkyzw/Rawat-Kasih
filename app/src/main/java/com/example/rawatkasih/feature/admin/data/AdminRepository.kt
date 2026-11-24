@@ -1,25 +1,20 @@
+
 package com.example.rawatkasih.feature.admin.data
 
+import com.example.rawatkasih.data.remote.idsPenugasan
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
-internal enum class PeranAkun(val label: String) {
-    KELUARGA("Keluarga"),
-    PRAMURUKTI("Pramurukti")
-}
-
-internal data class LansiaAdmin(val id: String, val nama: String)
-
+internal data class LansiaAdmin(val id: String, val nama: String, val kamar: String, val emailKeluarga: String?)
+internal data class PramuruktiAdmin(val uid: String, val email: String, val rencanaIds: List<String>)
 internal class AksesAdminDitolak : IllegalStateException()
 internal class KonflikAkunAdmin(val pesan: String) : IllegalStateException(pesan)
-internal class PenyambunganAkunGagal(cause: Exception) : IllegalStateException(cause)
 
 internal class AdminRepository(
     private val authAdmin: FirebaseAuth,
@@ -27,69 +22,127 @@ internal class AdminRepository(
     private val firestore: FirebaseFirestore
 ) {
     private val pendaftaran = Mutex()
+    private val akses get() = firestore.collection("aksesObat")
+    private val lansia get() = firestore.collection("lansiaP04")
 
-    suspend fun daftarLansia(): List<LansiaAdmin> {
-        return firestore.collection("lansiaP04").get(Source.SERVER).await().documents
-            .mapNotNull { dokumen ->
-                dokumen.getString("namaLansia")?.takeIf(String::isNotBlank)?.let { LansiaAdmin(dokumen.id, it) }
-            }
-            .sortedWith(compareBy<LansiaAdmin> { it.nama }.thenBy { it.id })
-    }
+    suspend fun daftarLansia(): List<LansiaAdmin> =
+        lansia.get(Source.SERVER).await().documents.mapNotNull { dokumen ->
+            val nama = dokumen.getString("namaLansia") ?: return@mapNotNull null
+            LansiaAdmin(dokumen.id, nama, dokumen.getString("kamar").orEmpty(), dokumen.getString("emailKeluarga"))
+        }.sortedBy { it.nama }
 
-    suspend fun buatAkun(email: String, kataSandi: String, peran: PeranAkun, rencanaId: String): Boolean =
+    suspend fun daftarPramurukti(): List<PramuruktiAdmin> =
+        akses.whereEqualTo("peran", "PRAMURUKTI").get(Source.SERVER).await().documents.map { dokumen ->
+            PramuruktiAdmin(
+                dokumen.id,
+                dokumen.getString("email") ?: "Akun lama (${dokumen.id.take(8)})",
+                idsPenugasan(dokumen.get("rencanaIds"), dokumen.getString("rencanaId"))
+            )
+        }.sortedBy { it.email }
+
+    suspend fun simpanLansia(id: String, nama: String, kamar: String, email: String, kataSandi: String) =
         pendaftaran.withLock {
-            val adminUid = authAdmin.currentUser?.uid ?: throw AksesAdminDitolak()
-            val akses = firestore.collection("aksesObat")
-            if (akses.document(adminUid).get(Source.SERVER).await().getString("peran") != "ADMIN") {
-                throw AksesAdminDitolak()
-            }
+            val admin = uidAdmin()
+            val uidKeluarga = if (email.isBlank()) null else siapkanAkun(admin, email, kataSandi)
+            val profil = lansia.document(id)
+            val rencana = firestore.collection("rencanaObat").document(id)
+            val akun = uidKeluarga?.let(akses::document)
+            firestore.runTransaction { transaksi ->
+                val profilLama = transaksi.get(profil)
+                val rencanaLama = transaksi.get(rencana)
+                val akunLama = akun?.let(transaksi::get)
+                if (akunLama?.exists() == true &&
+                    (akunLama.getString("peran") != "KELUARGA" || akunLama.getString("rencanaId") != id)
+                ) throw KonflikAkunAdmin("Email ini sudah digunakan untuk peran atau lansia lain.")
 
-            authPendaftaran.signOut()
-            try {
-                val uid = siapkanAkun(email, kataSandi)
-                if (uid == adminUid) throw KonflikAkunAdmin("Gunakan email yang berbeda dari akun admin.")
-                val target = akses.document(uid)
-                val hasil = try {
-                    firestore.runTransaction { transaksi ->
-                        val lama = transaksi.get(target)
-                        when {
-                            !lama.exists() -> {
-                                transaksi.set(target, mapOf("peran" to peran.name, "rencanaId" to rencanaId))
-                                HasilAkses.DIBUAT
-                            }
-                            lama.getString("peran") == peran.name && lama.getString("rencanaId") == rencanaId ->
-                                HasilAkses.SUDAH_ADA
-                            else -> HasilAkses.KONFLIK
-                        }
-                    }.await()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    throw PenyambunganAkunGagal(error)
+                val keluargaUid = uidKeluarga ?: profilLama.getString("keluargaUid")
+                val emailKeluarga = email.ifBlank { profilLama.getString("emailKeluarga").orEmpty() }
+                val data = mutableMapOf<String, Any>("namaLansia" to nama, "kamar" to kamar)
+                if (keluargaUid != null) {
+                    data["keluargaUid"] = keluargaUid
+                    data["emailKeluarga"] = emailKeluarga
                 }
-                when (hasil) {
-                    HasilAkses.DIBUAT -> true
-                    HasilAkses.SUDAH_ADA -> false
-                    HasilAkses.KONFLIK -> throw KonflikAkunAdmin("Email sudah terhubung ke peran atau lansia lain.")
+                transaksi.set(profil, data)
+                if (rencanaLama.exists()) {
+                    if (rencanaLama.getString("namaLansia") != nama) {
+                        transaksi.update(rencana, "namaLansia", nama)
+                    }
+                } else {
+                    transaksi.set(rencana, mapOf(
+                        "namaLansia" to nama,
+                        "stok" to 0,
+                        "batasStok" to 4,
+                        "aksi" to mapOf("jenis" to "AWAL", "jam" to ""),
+                        "jadwal" to emptyMap<String, Any>()
+                    ))
                 }
-            } finally {
-                authPendaftaran.signOut()
-            }
+                if (akun != null) {
+                    transaksi.set(akun, mapOf("peran" to "KELUARGA", "rencanaId" to id, "email" to email))
+                }
+            }.await()
         }
 
-    private suspend fun siapkanAkun(email: String, kataSandi: String): String {
-        val hasil = try {
-            authPendaftaran.createUserWithEmailAndPassword(email, kataSandi).await()
-        } catch (_: FirebaseAuthUserCollisionException) {
-            // Resume an earlier registration only when the same credentials still work.
-            try {
-                authPendaftaran.signInWithEmailAndPassword(email, kataSandi).await()
-            } catch (_: FirebaseAuthInvalidCredentialsException) {
-                throw KonflikAkunAdmin("Email sudah terdaftar. Jika ini percobaan ulang, gunakan kata sandi awal yang sama.")
+    suspend fun buatPramurukti(email: String, kataSandi: String) = pendaftaran.withLock {
+        val uid = siapkanAkun(uidAdmin(), email, kataSandi)
+        val akun = akses.document(uid)
+        firestore.runTransaction { transaksi ->
+            val lama = transaksi.get(akun)
+            if (lama.exists() && lama.getString("peran") != "PRAMURUKTI") {
+                throw KonflikAkunAdmin("Email ini sudah digunakan untuk peran lain.")
             }
-        }
-        return checkNotNull(hasil.user).uid
+            val ids = idsPenugasan(lama.get("rencanaIds"), lama.getString("rencanaId"))
+            transaksi.set(akun, mapOf("peran" to "PRAMURUKTI", "email" to email, "rencanaIds" to ids))
+        }.await()
     }
 
-    private enum class HasilAkses { DIBUAT, SUDAH_ADA, KONFLIK }
+    suspend fun ubahPenugasan(uid: String, rencanaId: String, tugaskan: Boolean) {
+        uidAdmin()
+        val akun = akses.document(uid)
+        val profil = lansia.document(rencanaId)
+        firestore.runTransaction { transaksi ->
+            val lama = transaksi.get(akun)
+            if (lama.getString("peran") != "PRAMURUKTI" || !transaksi.get(profil).exists()) {
+                throw KonflikAkunAdmin("Akun pramurukti atau profil lansia tidak tersedia.")
+            }
+            val ids = idsPenugasan(lama.get("rencanaIds"), lama.getString("rencanaId")).toMutableSet()
+            if (tugaskan) ids.add(rencanaId) else ids.remove(rencanaId)
+            if (ids.size > 50) throw KonflikAkunAdmin("Maksimal 50 penugasan per akun.")
+            val data = mutableMapOf<String, Any>("peran" to "PRAMURUKTI", "rencanaIds" to ids.sorted())
+            lama.getString("email")?.let { data["email"] = it }
+            transaksi.set(akun, data)
+        }.await()
+    }
+
+    suspend fun kirimTautanSandi(email: String) {
+        uidAdmin()
+        authAdmin.sendPasswordResetEmail(email).await()
+    }
+
+    private suspend fun uidAdmin(): String {
+        val uid = authAdmin.currentUser?.uid ?: throw AksesAdminDitolak()
+        if (akses.document(uid).get(Source.SERVER).await().getString("peran") != "ADMIN") {
+            throw AksesAdminDitolak()
+        }
+        return uid
+    }
+
+    private suspend fun siapkanAkun(admin: String, email: String, kataSandi: String): String {
+        authPendaftaran.signOut()
+        try {
+            val hasil = try {
+                authPendaftaran.createUserWithEmailAndPassword(email, kataSandi).await()
+            } catch (_: FirebaseAuthUserCollisionException) {
+                try {
+                    authPendaftaran.signInWithEmailAndPassword(email, kataSandi).await()
+                } catch (_: FirebaseAuthInvalidCredentialsException) {
+                    throw KonflikAkunAdmin("Email sudah terdaftar. Untuk melanjutkan percobaan sebelumnya, gunakan kata sandi yang sama.")
+                }
+            }
+            val uid = checkNotNull(hasil.user).uid
+            if (uid == admin) throw KonflikAkunAdmin("Gunakan email yang berbeda dari akun admin.")
+            return uid
+        } finally {
+            authPendaftaran.signOut()
+        }
+    }
 }
