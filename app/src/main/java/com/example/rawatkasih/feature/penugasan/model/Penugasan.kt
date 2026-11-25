@@ -69,6 +69,20 @@ internal object AturanPenugasan {
     /** Pramurukti bertugas untuk lansia ini pada [shiftSekarang]: penuh waktu selalu, shift hanya pada jamnya. */
     fun sedangBertugas(p: Penugasan, shiftSekarang: Int) = p.penuhWaktu || p.shiftKe == shiftSekarang
 
+    /**
+     * Awal tugas yang sedang berjalan atau terakhir berjalan (epoch ms) untuk menilai apakah catatannya sudah
+     * ditulis: jam mulai shift terakhir, atau tengah malam hari ini untuk penuh waktu.
+     */
+    fun awalTugas(tugas: Penugasan, pola: PolaShift, sekarang: java.util.Calendar): Long {
+        val awal = sekarang.clone() as java.util.Calendar
+        awal.set(java.util.Calendar.MINUTE, 0)
+        awal.set(java.util.Calendar.SECOND, 0)
+        awal.set(java.util.Calendar.MILLISECOND, 0)
+        awal.set(java.util.Calendar.HOUR_OF_DAY, tugas.shiftKe?.let { pola.jamMulai[it] } ?: 0)
+        if (awal.after(sekarang)) awal.add(java.util.Calendar.DAY_OF_MONTH, -1)
+        return awal.timeInMillis
+    }
+
     /** Label shift untuk catatan yang ditulis pramurukti ini sekarang. */
     fun labelShift(tugas: Penugasan?, pola: PolaShift, shiftSekarang: Int): String =
         if (tugas == null || tugas.penuhWaktu) "Penuh waktu" else pola.nama(tugas.shiftKe ?: shiftSekarang)

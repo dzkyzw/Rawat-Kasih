@@ -1,6 +1,9 @@
 package com.example.rawatkasih.feature.penugasan.data
 
 import com.example.rawatkasih.data.remote.idsPenugasan
+import com.example.rawatkasih.feature.obat.model.JadwalObat
+import com.example.rawatkasih.feature.obat.model.RencanaObat
+import com.example.rawatkasih.feature.obat.model.StatusJadwal
 import com.example.rawatkasih.feature.penugasan.model.Penugasan
 import com.example.rawatkasih.feature.penugasan.model.PolaShift
 import com.google.firebase.auth.FirebaseAuth
@@ -55,8 +58,16 @@ internal class PenugasanRepository(private val auth: FirebaseAuth, private val f
 
     fun amatiPenugasan(lansiaId: String): Flow<List<Penugasan>> = tugas.document(lansiaId).amati().map { bacaTugas(lansiaId, it) }
 
-    suspend fun namaLansia(id: String): String =
-        firestore.collection("rencanaObat").document(id).get().await().getString("namaLansia") ?: "Lansia"
+    /** Ringkasan rencana obat (Fungsi 1) untuk daftar tugas pramurukti: nama, stok, dan jadwal hari ini. */
+    fun amatiRencanaObat(id: String): Flow<RencanaObat?> = firestore.collection("rencanaObat").document(id).amati().map { d ->
+        val jadwal = (d.get("jadwal") as? Map<*, *>).orEmpty().mapNotNull { (jam, isi) ->
+            val dosis = isi as? Map<*, *> ?: return@mapNotNull null
+            val status = runCatching { StatusJadwal.valueOf(dosis["status"] as String) }.getOrNull() ?: return@mapNotNull null
+            JadwalObat(jam as String, dosis["waktu"] as? String ?: "", status)
+        }.sortedBy { it.jam }
+        val nama = d.getString("namaLansia") ?: return@map null
+        RencanaObat(nama, d.getLong("stok")?.toInt() ?: 0, d.getLong("batasStok")?.toInt() ?: 0, jadwal)
+    }
 
     /** Menyimpan pola baru; pendamping pada shift yang dihapus ikut dilepas dari lansia itu. */
     suspend fun simpanPola(baru: PolaShift) {

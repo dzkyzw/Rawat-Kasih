@@ -1,6 +1,7 @@
 package com.example.rawatkasih.ui.catatan
 
 import com.example.rawatkasih.feature.catatan.model.CatatanShift
+import com.example.rawatkasih.feature.obat.model.RencanaObat
 import com.example.rawatkasih.feature.penugasan.model.Lansia
 import com.example.rawatkasih.feature.penugasan.model.Penugasan
 import com.example.rawatkasih.feature.penugasan.model.PolaShift
@@ -21,6 +22,10 @@ internal data class CatatanUiState(
     val penugasan: List<Penugasan> = emptyList(),
     val pola: PolaShift = PolaShift(listOf(7)),
     val shiftSekarang: Int = 0,
+    /** Ringkasan obat tiap lansia dampingan, untuk layar Tugas saya. */
+    val obat: Map<String, RencanaObat> = emptyMap(),
+    /** Lansia yang sedang dibuka di layar catatan. */
+    val lansiaDipilih: String? = null,
     val statusSimpan: StatusSimpanCatatan = StatusSimpanCatatan.SIAP,
     /** Bertambah setiap catatan baru tersimpan; layar memakainya untuk mengosongkan form. */
     val jumlahTersimpan: Int = 0

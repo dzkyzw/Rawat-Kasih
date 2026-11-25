@@ -30,6 +30,7 @@ import com.example.rawatkasih.screen.HandoverRoute
 import com.example.rawatkasih.screen.ObatRoute
 import com.example.rawatkasih.screen.ShiftAdminPanel
 import com.example.rawatkasih.screen.SplashScreen
+import com.example.rawatkasih.screen.TugasRoute
 import com.example.rawatkasih.ui.admin.AdminViewModel
 import com.example.rawatkasih.ui.catatan.CatatanViewModel
 import com.example.rawatkasih.ui.catatan.ShiftAdminViewModel
@@ -115,7 +116,19 @@ class MainActivity : ComponentActivity() {
                         panelShift = { admin, aktif -> ShiftAdminPanel(shiftAdminViewModel, admin, aktif, onBerubah = adminViewModel::muat) }
                     )
                 },
-                catatanContent = { kembali, bukaProfil -> CatatanRoute(catatanViewModel, kembali, bukaProfil) }
+                catatanContent = { kembali, bukaProfil, bukaTugas -> CatatanRoute(catatanViewModel, kembali, bukaProfil, bukaTugas) },
+                tugasContent = { pilih, keluar, bukaProfil, bukaCatatan ->
+                    TugasRoute(
+                        catatanViewModel,
+                        onObat = pilih,
+                        onCatatan = { id ->
+                            id?.let(catatanViewModel::pilihLansia)
+                            bukaCatatan()
+                        },
+                        onProfil = bukaProfil,
+                        onKeluar = keluar
+                    )
+                }
             )
         }
     }

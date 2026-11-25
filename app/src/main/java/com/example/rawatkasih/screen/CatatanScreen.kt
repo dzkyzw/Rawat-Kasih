@@ -109,18 +109,19 @@ private fun HandoverKunci(state: CatatanUiState, onKonfirmasi: () -> Unit) {
 }
 
 @Composable
-internal fun CatatanRoute(viewModel: CatatanViewModel, onKembali: () -> Unit, onProfil: () -> Unit) {
+internal fun CatatanRoute(viewModel: CatatanViewModel, onKembali: () -> Unit, onProfil: () -> Unit, onTugas: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler(onBack = onKembali)
     TemaRawat {
         Scaffold(bottomBar = {
             PramuruktiBottomBar(
                 tabAktif = TabPramurukti.CATATAN,
-                tabTersedia = setOf(TabPramurukti.BERANDA, TabPramurukti.CATATAN, TabPramurukti.AKUN),
+                tabTersedia = setOf(TabPramurukti.BERANDA, TabPramurukti.LANSIA, TabPramurukti.CATATAN, TabPramurukti.AKUN),
                 onPilihTab = { tab ->
                     when (tab) {
                         TabPramurukti.BERANDA -> onKembali()
                         TabPramurukti.AKUN -> onProfil()
+                        TabPramurukti.LANSIA -> onTugas()
                         else -> Unit
                     }
                 }
@@ -134,7 +135,7 @@ internal fun CatatanRoute(viewModel: CatatanViewModel, onKembali: () -> Unit, on
                     }
                 }
                 !state.dimuat -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                else -> CatatanScreen(state, padding, onSimpan = viewModel::simpan, onUbahForm = viewModel::hapusKesalahanSimpan)
+                else -> CatatanScreen(state, padding, onPilih = viewModel::pilihLansia, onSimpan = viewModel::simpan, onUbahForm = viewModel::hapusKesalahanSimpan)
             }
         }
     }
@@ -145,11 +146,12 @@ internal fun CatatanRoute(viewModel: CatatanViewModel, onKembali: () -> Unit, on
 private fun CatatanScreen(
     state: CatatanUiState,
     padding: PaddingValues,
+    onPilih: (String) -> Unit,
     onSimpan: (String?, Mood?, String) -> String?,
     onUbahForm: () -> Unit
 ) {
     val lansiaSaya = state.tugasSaya.map { it.lansia }.distinctBy { it.id }
-    var dipilih by rememberSaveable { mutableStateOf<String?>(null) }
+    val dipilih = state.lansiaDipilih
     val lansiaId = dipilih?.takeIf { id -> lansiaSaya.any { it.id == id } } ?: lansiaSaya.firstOrNull()?.id
     var mood by rememberSaveable { mutableStateOf<Mood?>(null) }
     var isi by rememberSaveable { mutableStateOf("") }
@@ -193,7 +195,7 @@ private fun CatatanScreen(
         if (lansiaSaya.size > 1) {
             item {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    lansiaSaya.forEach { l -> FilterChip(l.id == lansiaId, { dipilih = l.id; galat = null }, { Text(l.nama) }, shape = BentukKartu) }
+                    lansiaSaya.forEach { l -> FilterChip(l.id == lansiaId, { onPilih(l.id); galat = null }, { Text(l.nama) }, shape = BentukKartu) }
                 }
             }
         }

@@ -7,6 +7,7 @@ import com.example.rawatkasih.feature.catatan.data.CatatanRepository
 import com.example.rawatkasih.feature.catatan.model.CatatanShift
 import com.example.rawatkasih.feature.catatan.model.Handover
 import com.example.rawatkasih.feature.catatan.model.Mood
+import com.example.rawatkasih.feature.obat.model.RencanaObat
 import com.example.rawatkasih.feature.penugasan.data.PenugasanRepository
 import com.example.rawatkasih.feature.penugasan.data.Sesi
 import com.example.rawatkasih.feature.penugasan.model.AturanPenugasan
@@ -39,7 +40,7 @@ internal class CatatanViewModel(
     private var sesi: Sesi? = null
     private val ulang = MutableStateFlow(0)
 
-    private class DataLansia(val lansia: Lansia, val penugasan: List<Penugasan>, val catatan: List<CatatanShift>)
+    private class DataLansia(val lansia: Lansia, val obat: RencanaObat?, val penugasan: List<Penugasan>, val catatan: List<CatatanShift>)
 
     init {
         viewModelScope.launch {
@@ -52,8 +53,16 @@ internal class CatatanViewModel(
                         emit(CatatanUiState(gagalMemuat = true))
                     }
                 }
-                .collect { baru -> _state.update { lama -> baru.copy(statusSimpan = lama.statusSimpan, jumlahTersimpan = lama.jumlahTersimpan) } }
+                .collect { baru ->
+                    _state.update { lama ->
+                        baru.copy(statusSimpan = lama.statusSimpan, jumlahTersimpan = lama.jumlahTersimpan, lansiaDipilih = lama.lansiaDipilih)
+                    }
+                }
         }
+    }
+
+    fun pilihLansia(id: String) {
+        _state.update { it.copy(lansiaDipilih = id) }
     }
 
     fun muat() {
@@ -66,10 +75,10 @@ internal class CatatanViewModel(
         val perLansia: Flow<List<DataLansia>> = if (s.lansiaIds.isEmpty()) flowOf(emptyList()) else combine(
             s.lansiaIds.map { id ->
                 combine(
-                    flow { emit(penugasanRepository.namaLansia(id)) },
+                    penugasanRepository.amatiRencanaObat(id),
                     penugasanRepository.amatiPenugasan(id),
                     repository.amatiCatatan(id)
-                ) { nama, p, c -> DataLansia(Lansia(id, nama), p, c) }
+                ) { obat, p, c -> DataLansia(Lansia(id, obat?.namaLansia ?: "Lansia"), obat, p, c) }
             }
         ) { it.toList() }
 
@@ -83,7 +92,7 @@ internal class CatatanViewModel(
             CatatanUiState(
                 dimuat = true, email = s.email, semua = catatan, lansia = daftar.map { it.lansia },
                 penugasan = daftar.flatMap { it.penugasan }, pola = pola, shiftSekarang = pola.shiftPada(j),
-                tugasSaya = milikSaya, belumDibaca = Handover.belumDibaca(catatan, s.uid, s.lansiaIds.toSet())
+                tugasSaya = milikSaya, obat = daftar.mapNotNull { d -> d.obat?.let { d.lansia.id to it } }.toMap(), belumDibaca = Handover.belumDibaca(catatan, s.uid, s.lansiaIds.toSet())
             )
         }
     }

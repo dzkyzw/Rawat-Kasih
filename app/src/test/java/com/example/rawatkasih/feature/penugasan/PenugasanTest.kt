@@ -59,4 +59,19 @@ class PenugasanTest {
         assertNotNull(AturanPenugasan.validasi(penuhWaktu = false, pramuruktiPenuh = null, perShift = emptyMap()))
         assertNull(AturanPenugasan.validasi(penuhWaktu = false, pramuruktiPenuh = null, perShift = mapOf(1 to "rina")))
     }
+
+    @Test
+    fun awalTugasMengikutiShiftTermasukMalamKemarin() {
+        val pola = PolaShift.bagiRata(2) // 07–19, 19–07
+        fun jam(h: Int) = java.util.Calendar.getInstance().apply { set(2026, 10, 25, h, 30, 0); set(java.util.Calendar.MILLISECOND, 0) }
+        fun hasil(t: Penugasan, h: Int) = java.util.Calendar.getInstance().apply { timeInMillis = AturanPenugasan.awalTugas(t, pola, jam(h)) }
+        val malam = Penugasan("oma", "dewi", 1)
+        // Jam 03.30 masih shift malam yang mulai kemarin 19.00.
+        assertEquals(24, hasil(malam, 3).get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(19, hasil(malam, 3).get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(25, hasil(malam, 20).get(java.util.Calendar.DAY_OF_MONTH))
+        val penuh = Penugasan("opa", "rina", null)
+        assertEquals(0, hasil(penuh, 15).get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(25, hasil(penuh, 15).get(java.util.Calendar.DAY_OF_MONTH))
+    }
 }
