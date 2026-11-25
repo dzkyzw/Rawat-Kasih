@@ -26,6 +26,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -47,9 +48,14 @@ import com.example.rawatkasih.ui.admin.AdminViewModel
 import java.util.UUID
 
 @Composable
-internal fun AdminRoute(viewModel: AdminViewModel, onProfil: () -> Unit, onKeluar: () -> Unit) {
+internal fun AdminRoute(
+    viewModel: AdminViewModel,
+    onProfil: () -> Unit,
+    onKeluar: () -> Unit,
+    panelShift: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> }
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var kelolaStaf by rememberSaveable { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     val aktif = !state.sedangMemuat && !state.sedangMenyimpan
     LaunchedEffect(viewModel) { viewModel.muat() }
 
@@ -65,8 +71,9 @@ internal fun AdminRoute(viewModel: AdminViewModel, onProfil: () -> Unit, onKelua
             }
             TextButton(onClick = onProfil, enabled = aktif) { Text("Profil") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !kelolaStaf, enabled = aktif, onClick = { kelolaStaf = false }, label = { Text("Lansia") })
-                FilterChip(selected = kelolaStaf, enabled = aktif, onClick = { kelolaStaf = true }, label = { Text("Pramurukti") })
+                FilterChip(selected = tab == 0, enabled = aktif, onClick = { tab = 0 }, label = { Text("Lansia") })
+                FilterChip(selected = tab == 1, enabled = aktif, onClick = { tab = 1 }, label = { Text("Pramurukti") })
+                FilterChip(selected = tab == 2, enabled = aktif, onClick = { tab = 2 }, label = { Text("Shift") })
             }
             if (!aktif) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.gagalMemuat?.let {
@@ -75,8 +82,11 @@ internal fun AdminRoute(viewModel: AdminViewModel, onProfil: () -> Unit, onKelua
             }
             state.pesanError?.let { PesanAdmin(it, gagal = true) }
             state.pesanBerhasil?.let { PesanAdmin(it, gagal = false) }
-            if (kelolaStaf) PanelPramurukti(state, aktif, viewModel)
-            else PanelLansia(state, aktif, viewModel)
+            when (tab) {
+                1 -> PanelPramurukti(state, aktif, viewModel)
+                2 -> panelShift(state, aktif)
+                else -> PanelLansia(state, aktif, viewModel)
+            }
         }
     }
 }

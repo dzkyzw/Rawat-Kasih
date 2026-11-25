@@ -1,4 +1,8 @@
 // aksesObat/{uid}: peran, email, rencanaId (keluarga), or rencanaIds (pramurukti).
+// Fungsi 2 · Catatan shift & handover:
+// pengaturanPanti/shift: jamMulai (jam mulai tiap shift, 1-6 shift).
+// penugasanShift/{rencanaId}: tugas.{uid} = {email, shift: [nomor shift]}; shift kosong = penuh waktu.
+// catatanShift/{rencanaId}/catatan/{id}: catatan shift dan siapa yang sudah membacanya.
 // lansiaP04/{rencanaId}: namaLansia, kamar, and an optional primary family account.
 // rencanaObat/{rencanaId}: namaLansia, stok, batasStok, jadwal and aksi.
 rules_version = '2';
@@ -139,6 +143,47 @@ service cloud.firestore {
           && namaValid(request.resource.data.namaLansia)
           && getAfter(/databases/$(database)/documents/lansiaP04/$(id)).data.namaLansia
             == request.resource.data.namaLansia);
+    }
+
+    function validCatatan(data) {
+      return data.keys().hasOnly(['penulisUid', 'penulisEmail', 'shift', 'mood', 'isi', 'waktu'])
+        && data.keys().hasAll(['penulisUid', 'penulisEmail', 'shift', 'mood', 'isi', 'waktu'])
+        && data.penulisUid == request.auth.uid
+        && data.penulisEmail == request.auth.token.email
+        && data.shift is string && data.shift.size() <= 40
+        && data.mood in ['TENANG', 'SENANG', 'SEDIH', 'GELISAH']
+        && data.isi is string && data.isi.size() >= 10 && data.isi.size() <= 2000
+        && data.waktu == request.time;
+    }
+
+    match /pengaturanPanti/shift {
+      allow get: if request.auth != null;
+      allow create, update: if admin()
+        && request.resource.data.keys().hasOnly(['jamMulai'])
+        && request.resource.data.jamMulai is list
+        && request.resource.data.jamMulai.size() >= 1 && request.resource.data.jamMulai.size() <= 6;
+    }
+
+    match /penugasanShift/{id} {
+      allow get: if admin() || (request.auth != null && pramurukti(id));
+      allow list: if admin();
+      allow create, update: if admin() && idValid(id)
+        && exists(/databases/$(database)/documents/lansiaP04/$(id))
+        && request.resource.data.keys().hasOnly(['tugas'])
+        && request.resource.data.tugas is map && request.resource.data.tugas.size() <= 50;
+    }
+
+    match /catatanShift/{id}/catatan/{catatanId} {
+      allow list: if admin() || (request.auth != null && pramurukti(id));
+      allow create: if request.auth != null && pramurukti(id) && validCatatan(request.resource.data);
+      // Hanya pramurukti lain yang ditugaskan ke lansia ini yang boleh mengonfirmasi, sekali saja.
+      allow update: if request.auth != null && pramurukti(id)
+        && !('dibacaOlehUid' in resource.data)
+        && resource.data.penulisUid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dibacaOlehUid', 'dibacaOlehEmail', 'dibacaPada'])
+        && request.resource.data.dibacaOlehUid == request.auth.uid
+        && request.resource.data.dibacaOlehEmail == request.auth.token.email
+        && request.resource.data.dibacaPada == request.time;
     }
   }
 }
