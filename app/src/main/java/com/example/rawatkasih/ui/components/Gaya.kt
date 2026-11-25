@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -31,39 +33,30 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.rawatkasih.R
+import com.example.rawatkasih.ui.theme.Arang
+import com.example.rawatkasih.ui.theme.ArangLembut
+import com.example.rawatkasih.ui.theme.GarisHalus
+import com.example.rawatkasih.ui.theme.GayaBagianRk
+import com.example.rawatkasih.ui.theme.GayaIsiRk
+import com.example.rawatkasih.ui.theme.GayaJudulRk
+import com.example.rawatkasih.ui.theme.GayaKeteranganRk
+import com.example.rawatkasih.ui.theme.Krem
+import com.example.rawatkasih.ui.theme.MerahHangat
+import com.example.rawatkasih.ui.theme.SkemaRawatKasih
 
-// Token visual mengikuti ObatScreen (Fungsi 1) supaya semua layar tampil sebagai satu aplikasi.
-internal val WarnaTeks = Color(0xFF111111)
-internal val WarnaSekunder = Color(0xFF595959)
-internal val WarnaGaris = Color(0xFFD9D9D9)
-internal val WarnaGalat = Color(0xFFB3261E)
-internal val BentukKartu = RoundedCornerShape(8.dp)
-internal val GayaJudul = TextStyle(fontSize = 28.sp, lineHeight = 39.sp, fontWeight = FontWeight.Bold)
-internal val GayaBagian = TextStyle(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
-internal val GayaIsi = TextStyle(fontSize = 16.sp, lineHeight = 22.sp)
-internal val GayaKeterangan = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
-
-/** Huruf merek, hanya untuk wordmark "Rawat Kasih" (splash dan kepala form masuk). */
-internal val Gilda = FontFamily(Font(R.font.gilda_display))
-
-private val SkemaRawat = lightColorScheme(
-    primary = WarnaTeks,
-    onPrimary = Color.White,
-    background = Color.White,
-    onBackground = WarnaTeks,
-    surface = Color.White,
-    onSurface = WarnaTeks,
-    onSurfaceVariant = WarnaSekunder,
-    surfaceContainerHigh = Color.White,
-    secondaryContainer = Color(0xFFE8E8E8),
-    onSecondaryContainer = WarnaTeks,
-    outline = WarnaGaris,
-    error = WarnaGalat
-)
+// Token visual = tema Rawat Kasih (sama dengan layar Fungsi 1), supaya semua layar tampil sebagai satu aplikasi.
+internal val WarnaTeks = Arang
+internal val WarnaSekunder = ArangLembut
+internal val WarnaGaris = GarisHalus
+internal val WarnaGalat = MerahHangat
+internal val BentukKartu = RoundedCornerShape(16.dp)
+internal val GayaJudul = GayaJudulRk
+internal val GayaBagian = GayaBagianRk
+internal val GayaIsi = GayaIsiRk
+internal val GayaKeterangan = GayaKeteranganRk
 
 @Composable
-internal fun TemaRawat(content: @Composable () -> Unit) = MaterialTheme(colorScheme = SkemaRawat, content = content)
+internal fun TemaRawat(content: @Composable () -> Unit) = MaterialTheme(colorScheme = SkemaRawatKasih, content = content)
 
 @Composable
 internal fun KepalaLayar(keterangan: String, judul: String, sub: String? = null) {
@@ -83,10 +76,12 @@ internal fun KartuGaris(
     val isi: @Composable ColumnScope.() -> Unit = {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
     }
+    // Kartu krem tanpa garis tepi: area dibedakan oleh warna, bukan garis.
+    val warna = CardDefaults.cardColors(containerColor = Krem, contentColor = WarnaTeks)
     if (onClick != null) {
-        OutlinedCard(onClick, modifier.fillMaxWidth(), shape = BentukKartu, border = BorderStroke(1.dp, WarnaGaris), content = isi)
+        Card(onClick, modifier.fillMaxWidth(), shape = BentukKartu, colors = warna, content = isi)
     } else {
-        OutlinedCard(modifier.fillMaxWidth(), shape = BentukKartu, border = BorderStroke(1.dp, WarnaGaris), content = isi)
+        Card(modifier.fillMaxWidth(), shape = BentukKartu, colors = warna, content = isi)
     }
 }
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -23,7 +24,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,27 +50,27 @@ import com.example.rawatkasih.ui.components.TabPramurukti
 import com.example.rawatkasih.ui.obat.ObatUiState
 import com.example.rawatkasih.ui.obat.ObatViewModel
 import com.example.rawatkasih.ui.obat.StatusSimpanObat
+import com.example.rawatkasih.ui.theme.Arang
+import com.example.rawatkasih.ui.theme.ArangLembut
+import com.example.rawatkasih.ui.theme.GayaBagianRk
+import com.example.rawatkasih.ui.theme.GayaIsiRk
+import com.example.rawatkasih.ui.theme.GayaJudulRk
+import com.example.rawatkasih.ui.theme.GayaKeteranganRk
+import com.example.rawatkasih.ui.theme.Krem
+import com.example.rawatkasih.ui.theme.SkemaRawatKasih
+import com.example.rawatkasih.ui.theme.TerakotaTua
 import java.util.Locale
 
-private val WarnaTeks = Color(0xFF111111)
-private val WarnaSekunder = Color(0xFF595959)
-private val WarnaGaris = Color(0xFFD9D9D9)
-private val BentukKartu = RoundedCornerShape(8.dp)
-private val SkemaObat = lightColorScheme(
-    primary = WarnaTeks,
-    onPrimary = Color.White,
-    background = Color.White,
-    onBackground = WarnaTeks,
-    surface = Color.White,
-    onSurface = WarnaTeks,
-    onSurfaceVariant = WarnaSekunder,
-    surfaceContainerHigh = Color.White,
-    outline = WarnaGaris
-)
-private val GayaJudul = TextStyle(fontSize = 28.sp, lineHeight = 39.sp, fontWeight = FontWeight.Bold)
-private val GayaBagian = TextStyle(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
-private val GayaIsi = TextStyle(fontSize = 16.sp, lineHeight = 22.sp)
-private val GayaKeterangan = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
+// Tampilan mengikuti tema Rawat Kasih (palet hangat, Quicksand + Atkinson); tata letak tidak berubah.
+private val WarnaTeks = Arang
+private val WarnaSekunder = ArangLembut
+private val WarnaGaris = Krem
+private val BentukKartu = RoundedCornerShape(16.dp)
+private val SkemaObat = SkemaRawatKasih
+private val GayaJudul = GayaJudulRk
+private val GayaBagian = GayaBagianRk
+private val GayaIsi = GayaIsiRk
+private val GayaKeterangan = GayaKeteranganRk
 
 @Composable
 internal fun ObatRoute(
@@ -324,7 +324,7 @@ private fun ObatScreen(
                         StatusStok.MENIPIS -> Triple(
                             "Persediaan menipis",
                             "Sisa ${state.stok} dosis · Ajukan pengisian stok",
-                            Color(0xFFB26A00)
+                            TerakotaTua
                         )
                         StatusStok.AMAN -> Triple(
                             "Persediaan obat",
@@ -454,7 +454,8 @@ private fun KartuRingkasan(judul: String, isi: String, warnaBatas: Color = Warna
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = BentukKartu,
-        border = BorderStroke(1.dp, warnaBatas)
+        colors = CardDefaults.outlinedCardColors(containerColor = Krem),
+        border = BorderStroke(if (warnaBatas == WarnaGaris) 0.dp else 1.5.dp, warnaBatas)
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(judul, style = GayaBagian)

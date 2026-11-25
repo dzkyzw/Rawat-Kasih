@@ -83,8 +83,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.WHITE),
-            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.WHITE)
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, 0xFFF9F7F2.toInt()),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, 0xFFF9F7F2.toInt())
         )
         setContent {
             RawatKasihTheme {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash sistem Android 12+: latar gading tanpa ikon, langsung diserahkan ke animasi logo R di Compose. -->
+    <style name="Theme.RawatKasih" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/rk_gading</item>
+        <item name="android:windowSplashScreenBackground">@color/rk_gading</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_kosong</item>
+    </style>
+</resources>
