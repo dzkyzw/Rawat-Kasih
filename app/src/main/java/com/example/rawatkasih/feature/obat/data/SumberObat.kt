@@ -6,5 +6,5 @@ import kotlinx.coroutines.flow.Flow
 
 internal interface SumberObat {
     fun amatiRencana(): Flow<RencanaObat>
-    suspend fun catat(jam: String, status: StatusJadwal)
+    suspend fun catat(jam: String, status: StatusJadwal, alasan: String = "")
 }

@@ -19,6 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.rawatkasih.feature.obat.model.RencanaObat
 import com.example.rawatkasih.feature.obat.model.StatusJadwal
+import com.example.rawatkasih.feature.obat.model.StatusStok
 import com.example.rawatkasih.feature.obat.model.rencanaObatContoh
 import com.example.rawatkasih.ui.components.PramuruktiBottomBar
 import com.example.rawatkasih.ui.components.TabPramurukti
@@ -192,7 +194,7 @@ private fun ObatScreen(
     pesanMuat: String? = null,
     sedangMuatUlang: Boolean = false,
     onBersihkanKesalahan: () -> Unit = {},
-    onCatat: (String, StatusJadwal) -> Unit,
+    onCatat: (String, StatusJadwal, String) -> Unit,
     onKeluar: (() -> Unit)? = null,
     onMuatUlang: (() -> Unit)? = null,
     onGantiLansia: (() -> Unit)? = null,
@@ -276,14 +278,24 @@ private fun ObatScreen(
                     }
                 }
                 item {
-                    KartuRingkasan(
-                        if (state.stokMenipis) "Persediaan menipis" else "Persediaan obat",
-                        if (state.stokMenipis) {
-                            "Sisa ${state.stok} dosis · Ajukan pengisian stok"
-                        } else {
-                            "Sisa ${state.stok} dosis · Batas minimum ${state.batasStok} dosis"
-                        }
-                    )
+                    val (judulStok, isiStok, warnaBatasStok) = when (state.statusStok) {
+                        StatusStok.HABIS -> Triple(
+                            "Obat habis",
+                            "Sisa 0 dosis · Segera lakukan restock darurat",
+                            MaterialTheme.colorScheme.error
+                        )
+                        StatusStok.MENIPIS -> Triple(
+                            "Persediaan menipis",
+                            "Sisa ${state.stok} dosis · Ajukan pengisian stok",
+                            Color(0xFFB26A00)
+                        )
+                        StatusStok.AMAN -> Triple(
+                            "Persediaan obat",
+                            "Sisa ${state.stok} dosis · Batas minimum ${state.batasStok} dosis",
+                            WarnaGaris
+                        )
+                    }
+                    KartuRingkasan(judulStok, isiStok, warnaBatas = warnaBatasStok)
                 }
                 if (state.bisaMengubah) {
                     item {
@@ -306,7 +318,10 @@ private fun ObatScreen(
                     } else {
                         val label = if (catatan.status == StatusJadwal.DIMINUM) "Diminum" else "Dilewati"
                         val petugas = if (onKeluar == null) " · Dicatat oleh Rina." else ""
-                        KartuRingkasan("${catatan.jam} · $label", "Jadwal ${catatan.waktu.lowercase(Locale.ROOT)}$petugas")
+                        val alasan = if (catatan.status == StatusJadwal.DILEWATI && catatan.alasanPenolakan.isNotEmpty()) {
+                            "\nAlasan: ${catatan.alasanPenolakan}"
+                        } else ""
+                        KartuRingkasan("${catatan.jam} · $label", "Jadwal ${catatan.waktu.lowercase(Locale.ROOT)}$petugas$alasan")
                     }
                 }
             }
@@ -323,7 +338,7 @@ private fun ObatScreen(
                     jamKonfirmasi = null
                     onBersihkanKesalahan()
                 },
-                onPilih = { status -> onCatat(jam, status) }
+                onPilih = { status, alasan -> onCatat(jam, status, alasan) }
             )
         }
         if (bukaStok && state.bisaMengubah && onSimpanPengaturan != null) {
@@ -358,8 +373,9 @@ private fun KonfirmasiJadwal(
     statusSimpan: StatusSimpanObat,
     pesanSimpan: String?,
     onTutup: () -> Unit,
-    onPilih: (StatusJadwal) -> Unit
+    onPilih: (StatusJadwal, String) -> Unit
 ) {
+    var alasanPenolakan by rememberSaveable(jam) { mutableStateOf("") }
     val sedangMenyimpan = statusSimpan == StatusSimpanObat.MENYIMPAN
     val pesan = when {
         sedangMenyimpan -> "Menyimpan konfirmasi…"
@@ -370,14 +386,26 @@ private fun KonfirmasiJadwal(
     AlertDialog(
         onDismissRequest = { if (!sedangMenyimpan) onTutup() },
         title = { Text("Konfirmasi jadwal $jam") },
-        text = { Text(pesan) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(pesan)
+                OutlinedTextField(
+                    value = alasanPenolakan,
+                    onValueChange = { if (it.length <= 120) alasanPenolakan = it },
+                    label = { Text("Alasan jika dilewati (opsional)") },
+                    singleLine = true,
+                    enabled = !sedangMenyimpan,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
         confirmButton = {
-            Button(enabled = tersedia && !sedangMenyimpan, onClick = { onPilih(StatusJadwal.DIMINUM) }) {
+            Button(enabled = tersedia && !sedangMenyimpan, onClick = { onPilih(StatusJadwal.DIMINUM, "") }) {
                 Text("Diminum")
             }
         },
         dismissButton = {
-            TextButton(enabled = !sedangMenyimpan, onClick = { onPilih(StatusJadwal.DILEWATI) }) {
+            TextButton(enabled = !sedangMenyimpan, onClick = { onPilih(StatusJadwal.DILEWATI, alasanPenolakan) }) {
                 Text("Dilewati")
             }
         }
@@ -385,11 +413,11 @@ private fun KonfirmasiJadwal(
 }
 
 @Composable
-private fun KartuRingkasan(judul: String, isi: String) {
+private fun KartuRingkasan(judul: String, isi: String, warnaBatas: Color = WarnaGaris) {
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = BentukKartu,
-        border = BorderStroke(1.dp, WarnaGaris)
+        border = BorderStroke(1.dp, warnaBatas)
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(judul, style = GayaBagian)
@@ -412,5 +440,5 @@ private fun TombolObat(label: String, onClick: () -> Unit) {
 @Preview(showBackground = true, widthDp = 393, heightDp = 852)
 @Composable
 private fun ObatScreenPreview() {
-    ObatScreen(state = rencanaObatContoh(), onCatat = { _, _ -> })
+    ObatScreen(state = rencanaObatContoh(), onCatat = { _, _, _ -> })
 }

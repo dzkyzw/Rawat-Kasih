@@ -9,6 +9,8 @@ import com.example.rawatkasih.feature.obat.data.remote.FirebaseObatRepository
 import com.example.rawatkasih.feature.obat.data.remote.KonflikObat
 import com.example.rawatkasih.feature.obat.data.remote.SesiFirebaseBerakhir
 import com.example.rawatkasih.feature.obat.model.StatusJadwal
+import com.example.rawatkasih.feature.obat.notification.PengingatObat
+import com.example.rawatkasih.feature.obat.notification.PengingatObatKosong
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
@@ -23,7 +25,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
+internal class ObatViewModel(
+    private val repository: SumberObat,
+    private val pengingat: PengingatObat = PengingatObatKosong
+) : ViewModel() {
     private val online = repository as? FirebaseObatRepository
     val modeOnline = online != null
     val emailAktif: String? get() = online?.emailAktif
@@ -151,7 +156,10 @@ internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
                         _state.update { it.copy(rencana = null, gagalMemuat = true, pesanMuat = pesanMuat(error)) }
                     }
                 }
-                .collect { rencana -> _state.update { it.copy(rencana = rencana) } }
+                .collect { rencana ->
+                    pengingat.periksaDanIngatkan(rencana)
+                    _state.update { it.copy(rencana = rencana) }
+                }
         }
     }
 
@@ -196,8 +204,8 @@ internal class ObatViewModel(private val repository: SumberObat) : ViewModel() {
         }
     }
 
-    fun catat(jam: String, status: StatusJadwal) = simpan(StatusSimpanObat.SIAP) {
-        repository.catat(jam, status)
+    fun catat(jam: String, status: StatusJadwal, alasan: String = "") = simpan(StatusSimpanObat.SIAP) {
+        repository.catat(jam, status, alasan)
     }
 
     fun simpanPengaturan(stokAwal: Int, stokBaru: Int?, jam: String?, waktu: String?) {

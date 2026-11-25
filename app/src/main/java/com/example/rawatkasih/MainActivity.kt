@@ -14,6 +14,7 @@ import com.example.rawatkasih.data.remote.FirebaseP04
 import com.example.rawatkasih.feature.admin.data.AdminRepository
 import com.example.rawatkasih.feature.obat.data.ObatRepository
 import com.example.rawatkasih.feature.obat.data.remote.FirebaseObatRepository
+import com.example.rawatkasih.feature.obat.notification.AndroidPengingatObat
 import com.example.rawatkasih.screen.AdminRoute
 import com.example.rawatkasih.screen.ObatRoute
 import com.example.rawatkasih.ui.admin.AdminViewModel
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     ObatRepository(RawatKasihDatabase.ambil(applicationContext))
                 }
-                ObatViewModel(sumber)
+                ObatViewModel(sumber, AndroidPengingatObat(applicationContext))
             }
         }
     }

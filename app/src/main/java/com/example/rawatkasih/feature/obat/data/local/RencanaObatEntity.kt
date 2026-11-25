@@ -31,7 +31,8 @@ internal data class JadwalObatEntity(
     val rencanaId: Int,
     val jam: String,
     val waktu: String,
-    val status: StatusJadwal
+    val status: StatusJadwal,
+    val alasanPenolakan: String = ""
 )
 
 internal data class RencanaObatDenganJadwal(

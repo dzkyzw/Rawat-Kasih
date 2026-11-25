@@ -26,6 +26,6 @@ internal interface ObatDao {
     @Query("UPDATE rencana_obat SET stok = :stok WHERE id = :id")
     suspend fun ubahStok(id: Int, stok: Int)
 
-    @Query("UPDATE jadwal_obat SET status = :status WHERE rencanaId = :id AND jam = :jam")
-    suspend fun ubahStatus(id: Int, jam: String, status: StatusJadwal)
+    @Query("UPDATE jadwal_obat SET status = :status, alasanPenolakan = :alasan WHERE rencanaId = :id AND jam = :jam")
+    suspend fun ubahStatus(id: Int, jam: String, status: StatusJadwal, alasan: String = "")
 }

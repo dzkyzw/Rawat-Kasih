@@ -96,9 +96,9 @@ internal class FirebaseObatRepository(
         }
     }
 
-    override suspend fun catat(jam: String, status: StatusJadwal) = transaksi { transaksi, dokumen, ref, uid ->
+    override suspend fun catat(jam: String, status: StatusJadwal, alasan: String) = transaksi { transaksi, dokumen, ref, uid ->
         val lama = bacaRencana(dokumen, bisaMengubah = true)
-        val baru = lama.catat(jam, status)
+        val baru = lama.catat(jam, status, alasan)
         if (baru == lama) {
             val tercatat = lama.jadwal.firstOrNull { it.jam == jam }
             if (tercatat == null || tercatat.status == StatusJadwal.BELUM_DIKONFIRMASI) {
@@ -109,12 +109,16 @@ internal class FirebaseObatRepository(
             val catatan = checkNotNull(dokumen.get("jadwal") as? Map<*, *>)
             val jadwal = catatan.entries.associate { (kunci, nilai) -> kunci as String to nilai }.toMutableMap()
             val dosis = baru.jadwal.first { it.jam == jam }
-            jadwal[jam] = mapOf(
+            val dataJadwal = mutableMapOf<String, Any>(
                 "waktu" to dosis.waktu,
                 "status" to dosis.status.name,
                 "dicatatOleh" to uid,
                 "dicatatPada" to FieldValue.serverTimestamp()
             )
+            if (dosis.alasanPenolakan.isNotEmpty()) {
+                dataJadwal["alasanPenolakan"] = dosis.alasanPenolakan
+            }
+            jadwal[jam] = dataJadwal
             transaksi.update(
                 ref,
                 mapOf("stok" to baru.stok, "jadwal" to jadwal, "aksi" to mapOf("jenis" to "KONFIRMASI", "jam" to jam))
@@ -182,7 +186,12 @@ internal class FirebaseObatRepository(
             batasStok = checkNotNull(dokumen.getLong("batasStok")).toInt(),
             jadwal = jadwal.entries.map { (jam, data) ->
                 val dosis = data as Map<*, *>
-                JadwalObat(jam as String, dosis["waktu"] as String, StatusJadwal.valueOf(dosis["status"] as String))
+                JadwalObat(
+                    jam = jam as String,
+                    waktu = dosis["waktu"] as String,
+                    status = StatusJadwal.valueOf(dosis["status"] as String),
+                    alasanPenolakan = dosis["alasanPenolakan"] as? String ?: ""
+                )
             }.sortedBy { it.jam },
             bisaMengubah = bisaMengubah
         )

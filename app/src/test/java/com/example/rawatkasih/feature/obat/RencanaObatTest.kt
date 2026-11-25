@@ -1,6 +1,7 @@
 package com.example.rawatkasih.feature.obat
 
 import com.example.rawatkasih.feature.obat.model.StatusJadwal
+import com.example.rawatkasih.feature.obat.model.StatusStok
 import com.example.rawatkasih.feature.obat.model.rencanaObatContoh
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,6 +38,26 @@ class RencanaObatTest {
     @Test
     fun stokHabisMencegahKonfirmasiDiminum() {
         val state = rencanaObatContoh().copy(stok = 0)
+        assertEquals(StatusStok.HABIS, state.statusStok)
         assertEquals(state, state.catat("08.00", StatusJadwal.DIMINUM))
+    }
+
+    @Test
+    fun dilewatiMenyimpanAlasanPenolakanTanpaMengurangiStok() {
+        val state = rencanaObatContoh().catat("08.00", StatusJadwal.DILEWATI, "  Lansia sedang tidur  ")
+        assertEquals(4, state.stok)
+        assertEquals(StatusStok.AMAN, state.statusStok)
+        assertEquals("Lansia sedang tidur", state.riwayat.first().alasanPenolakan)
+    }
+
+    @Test
+    fun statusStokBerubahSesuaiAmbangBatas() {
+        val aman = rencanaObatContoh()
+        val menipis = aman.catat("08.00", StatusJadwal.DIMINUM)
+        val habis = menipis.copy(stok = 0)
+
+        assertEquals(StatusStok.AMAN, aman.statusStok)
+        assertEquals(StatusStok.MENIPIS, menipis.statusStok)
+        assertEquals(StatusStok.HABIS, habis.statusStok)
     }
 }

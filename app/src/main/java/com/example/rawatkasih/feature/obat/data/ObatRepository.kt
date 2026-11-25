@@ -31,12 +31,13 @@ internal class ObatRepository(private val database: RawatKasihDatabase) : Sumber
         emitAll(dao.amatiRencana(ID_RENCANA_CONTOH).map { checkNotNull(it).keModel() })
     }
 
-    override suspend fun catat(jam: String, status: StatusJadwal) = database.withTransaction {
+    override suspend fun catat(jam: String, status: StatusJadwal, alasan: String) = database.withTransaction {
         val lama = checkNotNull(dao.ambilRencana(ID_RENCANA_CONTOH)).keModel()
-        val baru = lama.catat(jam, status)
+        val baru = lama.catat(jam, status, alasan)
         if (baru == lama) return@withTransaction
 
-        dao.ubahStatus(ID_RENCANA_CONTOH, jam, status)
+        val dosis = baru.jadwal.first { it.jam == jam }
+        dao.ubahStatus(ID_RENCANA_CONTOH, jam, status, dosis.alasanPenolakan)
         if (baru.stok != lama.stok) dao.ubahStok(ID_RENCANA_CONTOH, baru.stok)
     }
 
@@ -44,7 +45,9 @@ internal class ObatRepository(private val database: RawatKasihDatabase) : Sumber
         namaLansia = rencana.namaLansia,
         stok = rencana.stok,
         batasStok = rencana.batasStok,
-        jadwal = jadwal.sortedBy { it.jam }.map { JadwalObat(it.jam, it.waktu, it.status) }
+        jadwal = jadwal.sortedBy { it.jam }.map {
+            JadwalObat(it.jam, it.waktu, it.status, it.alasanPenolakan)
+        }
     )
 
     private companion object {

@@ -81,10 +81,14 @@ service cloud.firestore {
       return jamValid(jam) && jam in lama.jadwal && jam in baru.jadwal
         && baru.jadwal.diff(lama.jadwal).affectedKeys().hasOnly([jam])
         && lama.jadwal[jam].status == 'BELUM_DIKONFIRMASI'
-        && baru.jadwal[jam].keys().hasOnly(['waktu', 'status', 'dicatatOleh', 'dicatatPada'])
+        && baru.jadwal[jam].keys().hasOnly(['waktu', 'status', 'dicatatOleh', 'dicatatPada', 'alasanPenolakan'])
         && baru.jadwal[jam].waktu == lama.jadwal[jam].waktu
         && baru.jadwal[jam].dicatatOleh == request.auth.uid
         && baru.jadwal[jam].dicatatPada == request.time
+        && (!('alasanPenolakan' in baru.jadwal[jam])
+          || (baru.jadwal[jam].status == 'DILEWATI'
+            && baru.jadwal[jam].alasanPenolakan is string
+            && baru.jadwal[jam].alasanPenolakan.size() <= 120))
         && ((baru.jadwal[jam].status == 'DIMINUM' && baru.stok == lama.stok - 1)
           || (baru.jadwal[jam].status == 'DILEWATI' && baru.stok == lama.stok));
     }
