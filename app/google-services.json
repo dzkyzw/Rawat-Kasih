@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "611252713982",
+    "project_id": "rawat-kasih-tim-ub26",
+    "storage_bucket": "rawat-kasih-tim-ub26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:611252713982:android:1969cc8281cb7a46c628af",
+        "android_client_info": {
+          "package_name": "com.example.rawatkasih"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBr77E4mfn9XigOEH70cmdMPp9JLII0kQs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
