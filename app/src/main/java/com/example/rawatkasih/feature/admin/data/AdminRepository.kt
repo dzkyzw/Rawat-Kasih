@@ -2,6 +2,7 @@
 package com.example.rawatkasih.feature.admin.data
 
 import com.example.rawatkasih.data.remote.idsPenugasan
+import com.example.rawatkasih.feature.penugasan.data.ubahTugasLewatCentang
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
@@ -99,11 +100,15 @@ internal class AdminRepository(
         uidAdmin()
         val akun = akses.document(uid)
         val profil = lansia.document(rencanaId)
+        val tugasShift = firestore.collection("penugasanShift").document(rencanaId)
         firestore.runTransaction { transaksi ->
             val lama = transaksi.get(akun)
+            val shiftLama = transaksi.get(tugasShift)
             if (lama.getString("peran") != "PRAMURUKTI" || !transaksi.get(profil).exists()) {
                 throw KonflikAkunAdmin("Akun pramurukti atau profil lansia tidak tersedia.")
             }
+            // Fungsi 2: centang tanpa memilih shift dicatat sebagai penuh waktu.
+            ubahTugasLewatCentang(transaksi, tugasShift, shiftLama, uid, lama.getString("email"), tugaskan)
             val ids = idsPenugasan(lama.get("rencanaIds"), lama.getString("rencanaId")).toMutableSet()
             if (tugaskan) ids.add(rencanaId) else ids.remove(rencanaId)
             if (ids.size > 50) throw KonflikAkunAdmin("Maksimal 50 penugasan per akun.")

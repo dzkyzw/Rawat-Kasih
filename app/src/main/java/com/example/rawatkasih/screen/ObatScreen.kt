@@ -73,7 +73,13 @@ private val GayaIsi = TextStyle(fontSize = 16.sp, lineHeight = 22.sp)
 private val GayaKeterangan = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
 
 @Composable
-internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable (onProfil: () -> Unit) -> Unit) {
+internal fun ObatRoute(
+    viewModel: ObatViewModel,
+    adminContent: @Composable (onProfil: () -> Unit) -> Unit,
+    catatanContent: (@Composable (onKembali: () -> Unit, onProfil: () -> Unit, onTugas: () -> Unit) -> Unit)? = null,
+    // Fungsi 2 · daftar tugas pramurukti, menggantikan daftar pilihan lansia bila tersedia.
+    tugasContent: (@Composable (pilih: (String) -> Unit, keluar: () -> Unit, bukaProfil: () -> Unit, bukaCatatan: () -> Unit) -> Unit)? = null
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.perluMasuk) {
         MaterialTheme(colorScheme = SkemaObat) {
@@ -83,6 +89,7 @@ internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable (onPr
     }
 
     var profilTerbuka by rememberSaveable { mutableStateOf(false) }
+    var catatanTerbuka by rememberSaveable { mutableStateOf(false) }
     val layarUtama = rememberSaveableStateHolder()
     val bukaProfil = { profilTerbuka = true }
     if (profilTerbuka && viewModel.modeOnline) {
@@ -98,20 +105,37 @@ internal fun ObatRoute(viewModel: ObatViewModel, adminContent: @Composable (onPr
                 onKembali = { profilTerbuka = false }
             )
         }
+    } else if (catatanTerbuka && catatanContent != null && state.peranAkun == "PRAMURUKTI") {
+        // Fungsi 2 · Catatan shift
+        catatanContent({ catatanTerbuka = false }, bukaProfil) {
+            catatanTerbuka = false
+            if (state.lansiaId != null) viewModel.gantiLansia()
+        }
     } else {
         layarUtama.SaveableStateProvider("utama") {
             if (state.peranAkun == "ADMIN") {
                 MaterialTheme(colorScheme = SkemaObat) { adminContent(bukaProfil) }
             } else {
-                KontenObat(state, viewModel, bukaProfil)
+                val bukaCatatan = { catatanTerbuka = true }.takeIf { catatanContent != null && state.peranAkun == "PRAMURUKTI" }
+                KontenObat(state, viewModel, bukaProfil, bukaCatatan, tugasContent)
             }
         }
     }
 }
 
 @Composable
-private fun KontenObat(state: ObatUiState, viewModel: ObatViewModel, bukaProfil: () -> Unit) {
+private fun KontenObat(
+    state: ObatUiState,
+    viewModel: ObatViewModel,
+    bukaProfil: () -> Unit,
+    bukaCatatan: (() -> Unit)?,
+    tugasContent: (@Composable ((String) -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit)?
+) {
     val daftar = state.daftarLansia
+    if (daftar != null && tugasContent != null && bukaCatatan != null) {
+        tugasContent(viewModel::pilihLansia, viewModel::keluar, bukaProfil, bukaCatatan)
+        return
+    }
     if (daftar != null) {
         MaterialTheme(colorScheme = SkemaObat) {
             Scaffold { padding ->
@@ -131,6 +155,7 @@ private fun KontenObat(state: ObatUiState, viewModel: ObatViewModel, bukaProfil:
                     }
                     item {
                         TextButton(onClick = viewModel::gantiLansia) { Text("Muat ulang") }
+                        if (bukaCatatan != null) TextButton(onClick = bukaCatatan) { Text("Catatan shift") }
                         TextButton(onClick = bukaProfil) { Text("Profil") }
                         TextButton(onClick = viewModel::keluar) { Text("Keluar") }
                     }
@@ -153,7 +178,8 @@ private fun KontenObat(state: ObatUiState, viewModel: ObatViewModel, bukaProfil:
             onMuatUlang = if (viewModel.modeOnline) viewModel::segarkan else null,
             onProfil = if (viewModel.modeOnline) bukaProfil else null,
             onGantiLansia = if (state.lansiaId != null) viewModel::gantiLansia else null,
-            onSimpanPengaturan = if (viewModel.modeOnline) viewModel::simpanPengaturan else null
+            onSimpanPengaturan = if (viewModel.modeOnline) viewModel::simpanPengaturan else null,
+            onCatatan = bukaCatatan
         )
     } else {
         MaterialTheme(colorScheme = SkemaObat) {
@@ -199,7 +225,8 @@ private fun ObatScreen(
     onMuatUlang: (() -> Unit)? = null,
     onGantiLansia: (() -> Unit)? = null,
     onProfil: (() -> Unit)? = null,
-    onSimpanPengaturan: ((Int, Int?, String?, String?) -> Unit)? = null
+    onSimpanPengaturan: ((Int, Int?, String?, String?) -> Unit)? = null,
+    onCatatan: (() -> Unit)? = null
 ) {
     var jamKonfirmasi by rememberSaveable { mutableStateOf<String?>(null) }
     var bukaStok by rememberSaveable { mutableStateOf(false) }
@@ -210,9 +237,19 @@ private fun ObatScreen(
             if (state.bisaMengubah) {
                 PramuruktiBottomBar(
                     tabAktif = TabPramurukti.BERANDA,
-                    tabTersedia = setOf(TabPramurukti.AKUN),
+                    tabTersedia = setOfNotNull(
+                        TabPramurukti.AKUN,
+                        TabPramurukti.CATATAN.takeIf { onCatatan != null },
+                        TabPramurukti.LANSIA.takeIf { onCatatan != null && onGantiLansia != null }
+                    ),
                     onPilihTab = if (onProfil != null && statusSimpan != StatusSimpanObat.MENYIMPAN) {
-                        { onProfil() }
+                        { tab ->
+                            when (tab) {
+                                TabPramurukti.CATATAN -> onCatatan?.invoke()
+                                TabPramurukti.LANSIA -> onGantiLansia?.invoke()
+                                else -> onProfil()
+                            }
+                        }
                     } else null
                 )
             }
