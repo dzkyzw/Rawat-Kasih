@@ -1,58 +1,35 @@
 package com.example.rawatkasih.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+/** Satu skema warna untuk seluruh aplikasi (layar yang memasang MaterialTheme sendiri juga memakainya). */
+internal val SkemaRawatKasih = lightColorScheme(
+    primary = Sage,
     onPrimary = Color.White,
+    secondary = Terakota,
     onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    background = Gading,
+    onBackground = Arang,
+    surface = Gading,
+    onSurface = Arang,
+    onSurfaceVariant = ArangLembut,
+    surfaceContainerLowest = Gading,
+    surfaceContainerLow = Krem,
+    surfaceContainer = Krem,
+    surfaceContainerHigh = Krem,
+    surfaceContainerHighest = KremTua,
+    secondaryContainer = SageMuda,
+    onSecondaryContainer = Arang,
+    outline = GarisHalus,
+    outlineVariant = GarisHalus,
+    error = MerahHangat,
+    onError = Color.White,
 )
 
 @Composable
-fun RawatKasihTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+fun RawatKasihTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = SkemaRawatKasih, typography = Typography, content = content)
 }
