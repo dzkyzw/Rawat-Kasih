@@ -3,6 +3,8 @@ package com.example.rawatkasih.screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,12 +49,14 @@ import com.example.rawatkasih.ui.admin.AdminUiState
 import com.example.rawatkasih.ui.admin.AdminViewModel
 import java.util.UUID
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AdminRoute(
     viewModel: AdminViewModel,
     onProfil: () -> Unit,
     onKeluar: () -> Unit,
-    panelShift: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> }
+    panelShift: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> },
+    panelVital: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -70,10 +74,11 @@ internal fun AdminRoute(
                 TextButton(onClick = onKeluar, enabled = aktif) { Text("Keluar") }
             }
             TextButton(onClick = onProfil, enabled = aktif) { Text("Profil") }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = tab == 0, enabled = aktif, onClick = { tab = 0 }, label = { Text("Lansia") })
                 FilterChip(selected = tab == 1, enabled = aktif, onClick = { tab = 1 }, label = { Text("Pramurukti") })
                 FilterChip(selected = tab == 2, enabled = aktif, onClick = { tab = 2 }, label = { Text("Shift") })
+                FilterChip(selected = tab == 3, enabled = aktif, onClick = { tab = 3 }, label = { Text("Vital") })
             }
             if (!aktif) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.gagalMemuat?.let {
@@ -85,6 +90,7 @@ internal fun AdminRoute(
             when (tab) {
                 1 -> PanelPramurukti(state, aktif, viewModel)
                 2 -> panelShift(state, aktif)
+                3 -> panelVital(state, aktif)
                 else -> PanelLansia(state, aktif, viewModel)
             }
         }

@@ -78,7 +78,11 @@ internal fun ObatRoute(
     adminContent: @Composable (onProfil: () -> Unit) -> Unit,
     catatanContent: (@Composable (onKembali: () -> Unit, onProfil: () -> Unit, onTugas: () -> Unit) -> Unit)? = null,
     // Fungsi 2 · daftar tugas pramurukti, menggantikan daftar pilihan lansia bila tersedia.
-    tugasContent: (@Composable (pilih: (String) -> Unit, keluar: () -> Unit, bukaProfil: () -> Unit, bukaCatatan: () -> Unit) -> Unit)? = null
+    tugasContent: (@Composable (pilih: (String) -> Unit, keluar: () -> Unit, bukaProfil: () -> Unit, bukaCatatan: () -> Unit, bukaVital: () -> Unit) -> Unit)? = null,
+    // Fungsi 3 · monitoring & analisis tren vital sign medis (Pramurukti & Keluarga).
+    vitalContent: (@Composable (onKembali: () -> Unit, onProfil: () -> Unit, onTugas: () -> Unit, onCatatan: () -> Unit) -> Unit)? = null,
+    onPilihVitalLansia: ((String) -> Unit)? = null,
+    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.perluMasuk) {
@@ -90,6 +94,7 @@ internal fun ObatRoute(
 
     var profilTerbuka by rememberSaveable { mutableStateOf(false) }
     var catatanTerbuka by rememberSaveable { mutableStateOf(false) }
+    var vitalTerbuka by rememberSaveable { mutableStateOf(false) }
     val layarUtama = rememberSaveableStateHolder()
     val bukaProfil = { profilTerbuka = true }
     if (profilTerbuka && viewModel.modeOnline) {
@@ -111,13 +116,31 @@ internal fun ObatRoute(
             catatanTerbuka = false
             if (state.lansiaId != null) viewModel.gantiLansia()
         }
+    } else if (vitalTerbuka && vitalContent != null && (state.peranAkun == "PRAMURUKTI" || state.peranAkun == "KELUARGA")) {
+        // Fungsi 3 · Vital sign & grafik tren 7 hari
+        vitalContent(
+            { vitalTerbuka = false },
+            bukaProfil,
+            {
+                vitalTerbuka = false
+                if (state.lansiaId != null) viewModel.gantiLansia()
+            },
+            {
+                vitalTerbuka = false
+                catatanTerbuka = true
+            }
+        )
     } else {
         layarUtama.SaveableStateProvider("utama") {
             if (state.peranAkun == "ADMIN") {
                 MaterialTheme(colorScheme = SkemaObat) { adminContent(bukaProfil) }
             } else {
                 val bukaCatatan = { catatanTerbuka = true }.takeIf { catatanContent != null && state.peranAkun == "PRAMURUKTI" }
-                KontenObat(state, viewModel, bukaProfil, bukaCatatan, tugasContent)
+                val bukaVital = {
+                    state.lansiaId?.let { onPilihVitalLansia?.invoke(it) }
+                    vitalTerbuka = true
+                }.takeIf { vitalContent != null && (state.peranAkun == "PRAMURUKTI" || state.peranAkun == "KELUARGA") }
+                KontenObat(state, viewModel, bukaProfil, bukaCatatan, bukaVital, tugasContent, portalVitalKeluarga)
             }
         }
     }
@@ -129,11 +152,13 @@ private fun KontenObat(
     viewModel: ObatViewModel,
     bukaProfil: () -> Unit,
     bukaCatatan: (() -> Unit)?,
-    tugasContent: (@Composable ((String) -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit)?
+    bukaVital: (() -> Unit)?,
+    tugasContent: (@Composable ((String) -> Unit, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit)?,
+    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)?
 ) {
     val daftar = state.daftarLansia
     if (daftar != null && tugasContent != null && bukaCatatan != null) {
-        tugasContent(viewModel::pilihLansia, viewModel::keluar, bukaProfil, bukaCatatan)
+        tugasContent(viewModel::pilihLansia, viewModel::keluar, bukaProfil, bukaCatatan, bukaVital ?: {})
         return
     }
     if (daftar != null) {
@@ -179,7 +204,9 @@ private fun KontenObat(
             onProfil = if (viewModel.modeOnline) bukaProfil else null,
             onGantiLansia = if (state.lansiaId != null) viewModel::gantiLansia else null,
             onSimpanPengaturan = if (viewModel.modeOnline) viewModel::simpanPengaturan else null,
-            onCatatan = bukaCatatan
+            onCatatan = bukaCatatan,
+            onVital = bukaVital,
+            portalVitalKeluarga = portalVitalKeluarga
         )
     } else {
         MaterialTheme(colorScheme = SkemaObat) {
@@ -226,7 +253,9 @@ private fun ObatScreen(
     onGantiLansia: (() -> Unit)? = null,
     onProfil: (() -> Unit)? = null,
     onSimpanPengaturan: ((Int, Int?, String?, String?) -> Unit)? = null,
-    onCatatan: (() -> Unit)? = null
+    onCatatan: (() -> Unit)? = null,
+    onVital: (() -> Unit)? = null,
+    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)? = null
 ) {
     var jamKonfirmasi by rememberSaveable { mutableStateOf<String?>(null) }
     var bukaStok by rememberSaveable { mutableStateOf(false) }
@@ -283,14 +312,27 @@ private fun ObatScreen(
                                 Text("Profil")
                             }
                         }
-                        if (onGantiLansia != null) {
-                            OutlinedButton(
-                                onClick = onGantiLansia,
-                                enabled = statusSimpan != StatusSimpanObat.MENYIMPAN && !sedangMuatUlang
-                            ) { Text("Ganti lansia") }
+                        if (onGantiLansia != null || (onVital != null && state.bisaMengubah)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (onGantiLansia != null) {
+                                    OutlinedButton(
+                                        onClick = onGantiLansia,
+                                        enabled = statusSimpan != StatusSimpanObat.MENYIMPAN && !sedangMuatUlang
+                                    ) { Text("Ganti lansia") }
+                                }
+                                if (onVital != null && state.bisaMengubah) {
+                                    OutlinedButton(
+                                        onClick = onVital,
+                                        enabled = statusSimpan != StatusSimpanObat.MENYIMPAN
+                                    ) { Text("Vital sign") }
+                                }
+                            }
                         }
                         if (pesanMuat != null) Text(pesanMuat, color = MaterialTheme.colorScheme.error)
                     }
+                }
+                if (!state.bisaMengubah && onVital != null && portalVitalKeluarga != null) {
+                    item { portalVitalKeluarga(onVital) }
                 }
                 item {
                     if (jadwal != null) {

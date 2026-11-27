@@ -54,7 +54,8 @@ internal fun TugasRoute(
     onObat: (String) -> Unit,
     onCatatan: (String?) -> Unit,
     onProfil: () -> Unit,
-    onKeluar: () -> Unit
+    onKeluar: () -> Unit,
+    onVital: ((String) -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     TemaRawat {
@@ -74,7 +75,7 @@ internal fun TugasRoute(
             if (!state.dimuat && !state.gagalMemuat) {
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else {
-                Tugas(state, padding, onObat, onCatatan, onKeluar, viewModel::muat)
+                Tugas(state, padding, onObat, onCatatan, onVital, onKeluar, viewModel::muat)
             }
         }
     }
@@ -86,6 +87,7 @@ private fun Tugas(
     padding: PaddingValues,
     onObat: (String) -> Unit,
     onCatatan: (String?) -> Unit,
+    onVital: ((String) -> Unit)?,
     onKeluar: () -> Unit,
     onMuatUlang: () -> Unit
 ) {
@@ -127,11 +129,11 @@ private fun Tugas(
         }
         if (aktif.isNotEmpty()) {
             item { Judul("Sedang bertugas (${aktif.size})") }
-            items(aktif, key = { "aktif-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, true, onObat, onCatatan) }
+            items(aktif, key = { "aktif-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, true, onObat, onCatatan, onVital) }
         }
         if (nanti.isNotEmpty()) {
             item { Judul("Di luar jam shift Anda (${nanti.size})") }
-            items(nanti, key = { "nanti-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, false, onObat, onCatatan) }
+            items(nanti, key = { "nanti-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, false, onObat, onCatatan, onVital) }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -155,7 +157,8 @@ private fun KartuTugas(
     sekarang: Calendar,
     bertugas: Boolean,
     onObat: (String) -> Unit,
-    onCatatan: (String?) -> Unit
+    onCatatan: (String?) -> Unit,
+    onVital: ((String) -> Unit)?
 ) {
     val id = item.lansia.id
     val tugas = item.tugas
@@ -197,6 +200,9 @@ private fun KartuTugas(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TombolGaris("Obat", { onObat(id) }, Modifier.weight(1f))
             TombolGaris("Catatan", { onCatatan(id) }, Modifier.weight(1f))
+            if (onVital != null) {
+                TombolGaris("Vital", { onVital(id) }, Modifier.weight(1f))
+            }
         }
     }
 }
