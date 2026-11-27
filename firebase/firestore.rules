@@ -5,6 +5,8 @@
 // catatanShift/{rencanaId}/catatan/{id}: catatan shift dan siapa yang sudah membacanya.
 // Fungsi 3 · Monitoring & analisis tren vital sign medis:
 // vitalSign/{rencanaId}/catatan/{id}: sistol, diastol, gulaDarah, statusRisiko, penulisUid, penulisEmail, waktu.
+// Fungsi 4 · Galeri fisik & SOP P3K (dokumentasi tidak pernah dihapus):
+// galeriFisik/{rencanaId}/foto/{id}: metadata + thumbnail; subkoleksi gambar/{0..2}, tindakLanjut/{id}, koreksi/v{n}.
 // lansiaP04/{rencanaId}: namaLansia, kamar, and an optional primary family account.
 // rencanaObat/{rencanaId}: namaLansia, stok, batasStok, jadwal and aksi.
 rules_version = '2';
@@ -205,6 +207,119 @@ service cloud.firestore {
       allow get, list: if admin() || (request.auth != null && (pramurukti(id) || keluarga(id)));
       allow create: if request.auth != null && pramurukti(id) && validVitalSign(request.resource.data);
     }
+
+    // ---------------- Fungsi 4 · Galeri fisik & SOP P3K ----------------
+    function bacaGaleri(id) {
+      return admin() || (request.auth != null && (pramurukti(id) || keluarga(id)));
+    }
+
+    function teksValid(t, min, maks) {
+      return t is string && t.size() >= min && t.size() <= maks;
+    }
+
+    function kategoriValid(k) {
+      return k in ['LUKA_KULIT', 'MEMAR', 'BENGKAK', 'LAINNYA'];
+    }
+
+    function sopValid(s) {
+      return s in ['', 'lecet', 'luka-tekan', 'memar', 'bengkak', 'jatuh', 'suhu'];
+    }
+
+    function dokFoto(id, fotoId) {
+      return /databases/$(database)/documents/galeriFisik/$(id)/foto/$(fotoId);
+    }
+
+    function validFoto(data, id, fotoId) {
+      return data.keys().hasOnly(['kategori', 'keparahan', 'lokasi', 'observasi', 'thumbnail', 'jumlahFoto', 'sopId', 'tandaBahaya',
+          'perluDokter', 'alasanDokter', 'ditangani', 'versi', 'pengunggahUid', 'pengunggahEmail', 'waktu', 'diubahPada'])
+        && data.keys().hasAll(['kategori', 'keparahan', 'lokasi', 'observasi', 'thumbnail', 'jumlahFoto', 'sopId', 'tandaBahaya',
+          'perluDokter', 'alasanDokter', 'ditangani', 'versi', 'pengunggahUid', 'pengunggahEmail', 'waktu', 'diubahPada'])
+        && kategoriValid(data.kategori)
+        // Keparahan (flowchart 2.2.4): Parah/Darurat wajib "perlu dokter".
+        && data.keparahan in ['RINGAN', 'SEDANG', 'PARAH', 'DARURAT']
+        && (!(data.keparahan in ['PARAH', 'DARURAT']) || data.perluDokter == true) && teksValid(data.lokasi, 1, 60) && teksValid(data.observasi, 5, 500)
+        && teksValid(data.thumbnail, 1, 60000)
+        && data.jumlahFoto is int && data.jumlahFoto >= 1 && data.jumlahFoto <= 3
+        && sopValid(data.sopId)
+        && data.tandaBahaya is list && data.tandaBahaya.size() <= 14
+        && data.tandaBahaya.toSet().hasOnly(['LUKA_DALAM', 'BERDARAH_TERUS', 'TIDAK_SEHAT', 'KULIT_TERBUKA', 'INFEKSI', 'DEMAM',
+          'MEMBESAR_CEPAT', 'SANGAT_NYERI', 'SETELAH_JATUH', 'PINGSAN', 'TIDAK_BISA_BERGERAK', 'SESAK', 'SATU_TUNGKAI', 'SUHU_MENETAP'])
+        && data.perluDokter is bool && data.alasanDokter is list && data.alasanDokter.size() <= 20
+        // Aturan minimum mesin P3K di server: ada tanda bahaya → wajib "perlu dokter", dan selalu disertai alasan.
+        && (data.tandaBahaya.size() == 0 || data.perluDokter == true)
+        && data.perluDokter == (data.alasanDokter.size() > 0)
+        && data.ditangani == false && data.versi == 1
+        && data.pengunggahUid == request.auth.uid
+        && data.pengunggahEmail == request.auth.token.email
+        && data.waktu == request.time && data.diubahPada == request.time
+        // Foto pertama wajib ikut tersimpan dalam batch yang sama.
+        && existsAfter(/databases/$(database)/documents/galeriFisik/$(id)/foto/$(fotoId)/gambar/0);
+    }
+
+    function validDitangani() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ditangani'])
+        && request.resource.data.ditangani == true;
+    }
+
+    function validKoreksiFoto(id, fotoId) {
+      let baru = request.resource.data;
+      return baru.diff(resource.data).affectedKeys().hasOnly(['kategori', 'lokasi', 'sopId', 'versi', 'diubahPada'])
+        && kategoriValid(baru.kategori) && teksValid(baru.lokasi, 1, 60) && sopValid(baru.sopId)
+        && baru.versi == resource.data.versi + 1 && baru.diubahPada == request.time
+        && existsAfter(/databases/$(database)/documents/galeriFisik/$(id)/foto/$(fotoId)/koreksi/$('v' + string(baru.versi)));
+    }
+
+    function validKoreksi(d, id, fotoId, kid) {
+      let lama = get(dokFoto(id, fotoId)).data;
+      return d.keys().hasOnly(['versi', 'perubahan', 'alasan', 'sebelum', 'olehUid', 'olehEmail', 'waktu'])
+        && d.versi is int && kid == 'v' + string(d.versi)
+        && getAfter(dokFoto(id, fotoId)).data.versi == d.versi && lama.versi + 1 == d.versi
+        && d.perubahan is list && d.perubahan.size() >= 1 && d.perubahan.size() <= 4
+        && d.alasan in ['SALAH_PILIH', 'SALAH_KETIK', 'INFO_TAMBAHAN', 'LAINNYA']
+        && d.sebelum is map && d.sebelum.kategori == lama.kategori && d.sebelum.lokasi == lama.lokasi
+        && d.olehUid == request.auth.uid && d.olehEmail == request.auth.token.email
+        && d.waktu == request.time;
+    }
+
+    function validTindakLanjut(d) {
+      return d.keys().hasOnly(['tindakan', 'status', 'waktu', 'petugasUid', 'petugasEmail', 'dibuat'])
+        && teksValid(d.tindakan, 3, 300)
+        && ((d.status == 'SELESAI' && d.waktu == request.time)
+          || (d.status == 'TERJADWAL' && d.waktu is timestamp && d.waktu > request.time
+            && d.waktu < request.time + duration.value(30, 'd')))
+        && d.petugasUid == request.auth.uid && d.petugasEmail == request.auth.token.email
+        && d.dibuat == request.time;
+    }
+
+    match /galeriFisik/{id}/foto/{fotoId} {
+      allow get, list: if bacaGaleri(id);
+      allow create: if request.auth != null && pramurukti(id) && validFoto(request.resource.data, id, fotoId);
+      allow update: if request.auth != null && (
+        ((pramurukti(id) || admin()) && validDitangani())
+        || (pramurukti(id) && validKoreksiFoto(id, fotoId)));
+      // Tidak ada aturan delete: dokumentasi tidak bisa dihapus, hanya dikoreksi.
+
+      match /gambar/{n} {
+        allow get, list: if bacaGaleri(id);
+        // Foto hanya ditambahkan bersamaan dengan dokumentasinya, oleh pengunggah yang sama.
+        allow create: if request.auth != null && pramurukti(id) && n in ['0', '1', '2']
+          && request.resource.data.keys().hasOnly(['urutan', 'data'])
+          && request.resource.data.urutan is int && string(request.resource.data.urutan) == n
+          && teksValid(request.resource.data.data, 1, 700000)
+          && getAfter(dokFoto(id, fotoId)).data.pengunggahUid == request.auth.uid
+          && getAfter(dokFoto(id, fotoId)).data.waktu == request.time;
+      }
+
+      match /tindakLanjut/{tindakId} {
+        allow get, list: if bacaGaleri(id);
+        allow create: if request.auth != null && (pramurukti(id) || admin())
+          && exists(dokFoto(id, fotoId)) && validTindakLanjut(request.resource.data);
+      }
+
+      match /koreksi/{koreksiId} {
+        allow get, list: if bacaGaleri(id);
+        allow create: if request.auth != null && pramurukti(id) && validKoreksi(request.resource.data, id, fotoId, koreksiId);
+      }
+    }
   }
 }
-

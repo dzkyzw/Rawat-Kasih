@@ -43,6 +43,45 @@ import com.example.rawatkasih.ui.obat.ObatViewModel
 import com.example.rawatkasih.ui.theme.RawatKasihTheme
 import com.example.rawatkasih.ui.vitalsign.VitalAdminViewModel
 import com.example.rawatkasih.ui.vitalsign.VitalSignViewModel
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.core.content.ContextCompat
+import com.example.rawatkasih.feature.galeri.model.FotoFisik
+import com.example.rawatkasih.feature.galeri.model.StatusDokumentasi
+import com.example.rawatkasih.feature.galeri.notification.AndroidNotifikasiFisik
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.rawatkasih.feature.galeri.data.AndroidPemrosesFoto
+import com.example.rawatkasih.feature.galeri.data.GaleriRepository
+import com.example.rawatkasih.screen.GaleriRoute
+import com.example.rawatkasih.screen.PantauGaleriPanel
+import com.example.rawatkasih.ui.galeri.GaleriViewModel
+import com.example.rawatkasih.ui.galeri.P3Ikon
+import com.example.rawatkasih.ui.galeri.P3Tepi
+import com.example.rawatkasih.ui.galeri.P3Teks
+import com.example.rawatkasih.ui.galeri.P3TopBarKembali
+import com.example.rawatkasih.ui.galeri.P3Warna
+import com.example.rawatkasih.ui.galeri.PantauGaleriViewModel
 
 class MainActivity : ComponentActivity() {
     private val obatViewModel: ObatViewModel by viewModels {
@@ -97,6 +136,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Fungsi 4 · Galeri fisik & P3K (hanya mode online).
+    private val galeriViewModel: GaleriViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val firebase = checkNotNull(FirebaseP04.ambil(applicationContext))
+                GaleriViewModel(
+                    GaleriRepository(firebase.firestore),
+                    PenugasanRepository(firebase.auth, firebase.firestore),
+                    AndroidPemrosesFoto(applicationContext)
+                )
+            }
+        }
+    }
+
     private val vitalAdminViewModel: VitalAdminViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -105,6 +158,19 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private val pantauGaleriViewModel: PantauGaleriViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val firebase = checkNotNull(FirebaseP04.ambil(applicationContext))
+                PantauGaleriViewModel(GaleriRepository(firebase.firestore), {
+                    firebase.auth.currentUser?.let { it.uid to it.email.orEmpty() }
+                })
+            }
+        }
+    }
+
+    private val notifikasiFisik by lazy { AndroidNotifikasiFisik(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -129,6 +195,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         HandoverRoute(catatanViewModel) {
+            DenganGaleriFisik {
             ObatRoute(
                 obatViewModel,
                 adminContent = { bukaProfil ->
@@ -169,6 +236,104 @@ class MainActivity : ComponentActivity() {
                     KartuPortalVitalKeluarga(vitalState.ringkasanAktif(), onBukaVital)
                 }
             )
+            }
+        }
+    }
+
+    /**
+     * Fungsi 4 · pintu masuk Galeri fisik tanpa mengubah layar milik fungsi lain: tombol kecil di pojok kanan bawah.
+     * Pramurukti/keluarga membuka galeri; admin membuka panel pantau galeri fisik.
+     */
+    @Composable
+    private fun DenganGaleriFisik(konten: @Composable () -> Unit) {
+        val obat by obatViewModel.state.collectAsStateWithLifecycle()
+        val peran = obat.peranAkun.takeIf { !obat.perluMasuk }
+        val bisaBuka = peran in setOf("PRAMURUKTI", "KELUARGA", "ADMIN")
+        var terbuka by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(bisaBuka) { if (!bisaBuka) terbuka = false }
+
+        // Alert perlu dokter (pengelola) dan kabar dokumentasi baru (keluarga), flowchart 2.2.4.
+        val pantau = when (peran) {
+            "ADMIN" -> PantauanFisik.admin(adminViewModel, pantauGaleriViewModel)
+            "PRAMURUKTI", "KELUARGA" -> PantauanFisik.galeri(galeriViewModel)
+            else -> PantauanFisik()
+        }
+        LaunchedEffect(peran, pantau.dimuat, pantau.untukNotifikasi) {
+            if (pantau.dimuat && (peran == "ADMIN" || peran == "KELUARGA")) {
+                notifikasiFisik.periksa(peran, pantau.untukNotifikasi, pantau.namaLansia)
+            }
+        }
+        val izinNotifikasi = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+        LaunchedEffect(peran) {
+            if ((peran == "ADMIN" || peran == "KELUARGA") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) izinNotifikasi.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // Layar fungsi lain tetap tersusun di bawah supaya posisinya (mis. sedang di Catatan) tidak hilang saat galeri ditutup.
+        Box(Modifier.fillMaxSize()) {
+            konten()
+            when {
+                terbuka && peran == "ADMIN" -> PantauFisikAdmin { terbuka = false }
+                terbuka && bisaBuka -> GaleriRoute(galeriViewModel, null) { terbuka = false }
+                bisaBuka -> {
+                    // Di atas bottom bar pramurukti (72dp) supaya tidak menutupi tab; angka = dokumentasi perlu dokter.
+                    BadgedBox(
+                        badge = {
+                            if (pantau.perluDokter > 0) Badge(containerColor = P3Warna.Accent, contentColor = P3Warna.Raised) { Text("${pantau.perluDokter}") }
+                        },
+                        modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 16.dp, bottom = 88.dp)
+                    ) {
+                        ExtendedFloatingActionButton(
+                            onClick = { terbuka = true },
+                            icon = { P3Ikon(R.drawable.p3_ic_camera, ukuran = 20.dp) },
+                            text = { Text("Galeri fisik", style = P3Teks.Label) },
+                            containerColor = P3Warna.Brand,
+                            contentColor = P3Warna.Ink
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** Ringkasan untuk tombol Galeri & notifikasi Fungsi 4, sesuai peran yang sedang masuk. */
+    private class PantauanFisik(
+        val dimuat: Boolean = false,
+        val perluDokter: Int = 0,
+        /** Admin: daftar perlu dokter. Keluarga: semua dokumentasi. */
+        val untukNotifikasi: List<FotoFisik> = emptyList(),
+        val namaLansia: (String) -> String = { "Lansia" }
+    ) {
+        companion object {
+            @Composable
+            fun admin(adminVm: AdminViewModel, pantauVm: PantauGaleriViewModel): PantauanFisik {
+                val admin by adminVm.state.collectAsStateWithLifecycle()
+                val p by pantauVm.state.collectAsStateWithLifecycle()
+                val nama = admin.lansia.associate { it.id to it.nama }
+                LaunchedEffect(nama) { if (nama.isNotEmpty()) pantauVm.mulai(nama) }
+                return PantauanFisik(p.dimuat && nama.isNotEmpty(), p.perluDokter.size, p.perluDokter) { nama[it] ?: "Lansia" }
+            }
+
+            @Composable
+            fun galeri(vm: GaleriViewModel): PantauanFisik {
+                val g by vm.state.collectAsStateWithLifecycle()
+                return PantauanFisik(g.dimuat, g.foto.count { it.status == StatusDokumentasi.PERLU_DOKTER }, g.foto, g::namaLansia)
+            }
+        }
+    }
+
+    @Composable
+    private fun PantauFisikAdmin(onKembali: () -> Unit) {
+        val admin by adminViewModel.state.collectAsStateWithLifecycle()
+        BackHandler(onBack = onKembali)
+        Scaffold(
+            containerColor = P3Warna.Paper,
+            topBar = { Box(Modifier.statusBarsPadding()) { P3TopBarKembali("Pantau galeri fisik", onKembali) } }
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = P3Tepi, vertical = 8.dp)) {
+                PantauGaleriPanel(pantauGaleriViewModel, admin, aktif = !admin.sedangMemuat && !admin.sedangMenyimpan)
+            }
         }
     }
 }
