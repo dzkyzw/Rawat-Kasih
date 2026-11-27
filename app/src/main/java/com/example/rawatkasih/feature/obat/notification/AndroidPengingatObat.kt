@@ -13,9 +13,6 @@ import com.example.rawatkasih.R
 import com.example.rawatkasih.feature.obat.model.RencanaObat
 import com.example.rawatkasih.feature.obat.model.StatusStok
 
-/**
- * Implementasi Android untuk pengingat jadwal obat dan peringatan restock otomatis.
- */
 internal class AndroidPengingatObat(context: Context) : PengingatObat {
     private val appContext = context.applicationContext
     private val manager = NotificationManagerCompat.from(appContext)

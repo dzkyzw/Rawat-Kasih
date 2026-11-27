@@ -23,7 +23,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 internal data class PilihanLansiaObat(val id: String, val nama: String)
-
 internal class SesiFirebaseBerakhir : IllegalStateException()
 internal class AksesObatDitolak : IllegalStateException()
 internal class KonflikObat(val pesan: String) : IllegalStateException(pesan)
