@@ -52,8 +52,6 @@ import com.example.rawatkasih.ui.components.GayaKeterangan
 import com.example.rawatkasih.ui.components.KartuGaris
 import com.example.rawatkasih.ui.components.KepalaLayar
 import com.example.rawatkasih.ui.components.PesanGalat
-import com.example.rawatkasih.ui.components.PramuruktiBottomBar
-import com.example.rawatkasih.ui.components.TabPramurukti
 import com.example.rawatkasih.ui.components.TemaRawat
 import com.example.rawatkasih.ui.components.TombolUtama
 import com.example.rawatkasih.ui.components.WarnaGalat
@@ -109,35 +107,17 @@ private fun HandoverKunci(state: CatatanUiState, onKonfirmasi: () -> Unit) {
 }
 
 @Composable
-internal fun CatatanRoute(viewModel: CatatanViewModel, onKembali: () -> Unit, onProfil: () -> Unit, onTugas: () -> Unit) {
+internal fun CatatanKonten(viewModel: CatatanViewModel, padding: PaddingValues) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    BackHandler(onBack = onKembali)
-    TemaRawat {
-        Scaffold(bottomBar = {
-            PramuruktiBottomBar(
-                tabAktif = TabPramurukti.CATATAN,
-                tabTersedia = setOf(TabPramurukti.BERANDA, TabPramurukti.LANSIA, TabPramurukti.CATATAN, TabPramurukti.AKUN),
-                onPilihTab = { tab ->
-                    when (tab) {
-                        TabPramurukti.BERANDA -> onKembali()
-                        TabPramurukti.AKUN -> onProfil()
-                        TabPramurukti.LANSIA -> onTugas()
-                        else -> Unit
-                    }
-                }
-            )
-        }) { padding ->
-            when {
-                state.gagalMemuat -> Box(Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Catatan shift gagal dimuat.")
-                        Button(onClick = viewModel::muat) { Text("Coba lagi") }
-                    }
-                }
-                !state.dimuat -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                else -> CatatanScreen(state, padding, onPilih = viewModel::pilihLansia, onSimpan = viewModel::simpan, onUbahForm = viewModel::hapusKesalahanSimpan)
+    when {
+        state.gagalMemuat -> Box(Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Catatan shift gagal dimuat.")
+                Button(onClick = viewModel::muat) { Text("Coba lagi") }
             }
         }
+        !state.dimuat -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        else -> CatatanScreen(state, padding, onPilih = viewModel::pilihLansia, onSimpan = viewModel::simpan, onUbahForm = viewModel::hapusKesalahanSimpan)
     }
 }
 
@@ -179,7 +159,7 @@ private fun CatatanScreen(
     ) {
         item {
             KepalaLayar(
-                "Catatan · ${state.email}", "Catatan shift",
+                "Catatan", "Catatan shift",
                 "Sekarang ${pola.nama(state.shiftSekarang).lowercase(Locale.ROOT)} (${pola.rentang(state.shiftSekarang)})"
             )
         }

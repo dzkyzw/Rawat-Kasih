@@ -26,16 +26,20 @@ import com.example.rawatkasih.feature.obat.data.remote.FirebaseObatRepository
 import com.example.rawatkasih.feature.obat.notification.AndroidPengingatObat
 import com.example.rawatkasih.feature.penugasan.data.PenugasanRepository
 import com.example.rawatkasih.feature.vitalsign.data.VitalSignRepository
+import com.example.rawatkasih.feature.kontak.KontakRepository
+import com.example.rawatkasih.feature.kunjungan.data.KunjunganRepository
+import com.example.rawatkasih.screen.KeluargaRoute
+import com.example.rawatkasih.screen.PramuruktiRoute
+import com.example.rawatkasih.screen.PanelKunjunganAdmin
+import com.example.rawatkasih.ui.keluarga.KontakViewModel
+import com.example.rawatkasih.ui.kunjungan.KunjunganViewModel
+import androidx.compose.runtime.remember
 import com.example.rawatkasih.screen.AdminRoute
-import com.example.rawatkasih.screen.CatatanRoute
 import com.example.rawatkasih.screen.HandoverRoute
-import com.example.rawatkasih.screen.KartuPortalVitalKeluarga
 import com.example.rawatkasih.screen.ObatRoute
 import com.example.rawatkasih.screen.ShiftAdminPanel
 import com.example.rawatkasih.screen.SplashScreen
-import com.example.rawatkasih.screen.TugasRoute
 import com.example.rawatkasih.screen.VitalAdminPanel
-import com.example.rawatkasih.screen.VitalSignRoute
 import com.example.rawatkasih.ui.admin.AdminViewModel
 import com.example.rawatkasih.ui.catatan.CatatanViewModel
 import com.example.rawatkasih.ui.catatan.ShiftAdminViewModel
@@ -172,6 +176,25 @@ class MainActivity : ComponentActivity() {
 
     private val notifikasiFisik by lazy { AndroidNotifikasiFisik(applicationContext) }
 
+    // Kerangka keluarga: kunjungan keluarga dan nomor WhatsApp panti/keluarga (hanya mode online).
+    private val kunjunganViewModel: KunjunganViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val firebase = checkNotNull(FirebaseP04.ambil(applicationContext))
+                KunjunganViewModel(KunjunganRepository(firebase.auth, firebase.firestore))
+            }
+        }
+    }
+
+    private val kontakViewModel: KontakViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val firebase = checkNotNull(FirebaseP04.ambil(applicationContext))
+                KontakViewModel(KontakRepository(firebase.auth, firebase.firestore))
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -194,8 +217,30 @@ class MainActivity : ComponentActivity() {
             ObatRoute(obatViewModel, adminContent = {})
             return
         }
+        val obatState by obatViewModel.state.collectAsStateWithLifecycle()
+        val sesiFlow = remember {
+            checkNotNull(FirebaseP04.ambil(applicationContext)).let { PenugasanRepository(it.auth, it.firestore) }.amatiSesi()
+        }
+        val sesi by sesiFlow.collectAsStateWithLifecycle(null)
         HandoverRoute(catatanViewModel) {
             DenganGaleriFisik {
+            // Keluarga dan pramurukti memakai kerangka dengan bottom navigation; admin tetap di AdminRoute.
+            if (!obatState.perluMasuk && obatState.peranAkun == "PRAMURUKTI") {
+                PramuruktiRoute(obatViewModel, catatanViewModel, vitalSignViewModel, galeriViewModel)
+                return@DenganGaleriFisik
+            }
+            if (!obatState.perluMasuk && obatState.peranAkun == "KELUARGA") {
+                KeluargaRoute(
+                    lansiaId = sesi?.lansiaIds?.firstOrNull(),
+                    uid = sesi?.uid.orEmpty(),
+                    obat = obatViewModel,
+                    vital = vitalSignViewModel,
+                    galeri = galeriViewModel,
+                    kunjungan = kunjunganViewModel,
+                    kontak = kontakViewModel
+                )
+                return@DenganGaleriFisik
+            }
             ObatRoute(
                 obatViewModel,
                 adminContent = { bukaProfil ->
@@ -207,33 +252,9 @@ class MainActivity : ComponentActivity() {
                             obatViewModel.keluar()
                         },
                         panelShift = { admin, aktif -> ShiftAdminPanel(shiftAdminViewModel, admin, aktif, onBerubah = adminViewModel::muat) },
-                        panelVital = { admin, aktif -> VitalAdminPanel(vitalAdminViewModel, admin, aktif) }
+                        panelVital = { admin, aktif -> VitalAdminPanel(vitalAdminViewModel, admin, aktif) },
+                        panelKunjungan = { admin, aktif -> PanelKunjunganAdmin(kunjunganViewModel, kontakViewModel, admin, aktif) }
                     )
-                },
-                catatanContent = { kembali, bukaProfil, bukaTugas -> CatatanRoute(catatanViewModel, kembali, bukaProfil, bukaTugas) },
-                tugasContent = { pilih, keluar, bukaProfil, bukaCatatan, bukaVital ->
-                    TugasRoute(
-                        catatanViewModel,
-                        onObat = pilih,
-                        onCatatan = { id ->
-                            id?.let(catatanViewModel::pilihLansia)
-                            bukaCatatan()
-                        },
-                        onProfil = bukaProfil,
-                        onKeluar = keluar,
-                        onVital = { id ->
-                            vitalSignViewModel.pilihLansia(id)
-                            bukaVital()
-                        }
-                    )
-                },
-                vitalContent = { kembali, bukaProfil, bukaTugas, bukaCatatan ->
-                    VitalSignRoute(vitalSignViewModel, kembali, bukaProfil, bukaTugas, bukaCatatan)
-                },
-                onPilihVitalLansia = vitalSignViewModel::pilihLansia,
-                portalVitalKeluarga = { onBukaVital ->
-                    val vitalState by vitalSignViewModel.state.collectAsStateWithLifecycle()
-                    KartuPortalVitalKeluarga(vitalState.ringkasanAktif(), onBukaVital)
                 }
             )
             }
@@ -276,7 +297,7 @@ class MainActivity : ComponentActivity() {
             when {
                 terbuka && peran == "ADMIN" -> PantauFisikAdmin { terbuka = false }
                 terbuka && bisaBuka -> GaleriRoute(galeriViewModel, null) { terbuka = false }
-                bisaBuka -> {
+                bisaBuka && peran == "ADMIN" -> {
                     // Di atas bottom bar pramurukti (72dp) supaya tidak menutupi tab; angka = dokumentasi perlu dokter.
                     BadgedBox(
                         badge = {

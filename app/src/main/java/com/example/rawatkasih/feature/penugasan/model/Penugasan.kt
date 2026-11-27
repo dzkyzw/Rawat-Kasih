@@ -31,7 +31,8 @@ internal data class PolaShift(val jamMulai: List<Int>) {
 
     fun jamSelesai(ke: Int) = jamMulai[(ke + 1) % jumlah]
 
-    fun rentang(ke: Int) = "${jam(jamMulai[ke])}–${jam(jamSelesai(ke))}"
+    // Satu shift menutup 24 jam penuh; "07.00–07.00" terbaca seperti salah.
+    fun rentang(ke: Int) = if (jumlah == 1) "24 jam" else "${jam(jamMulai[ke])}–${jam(jamSelesai(ke))}"
 
     /** Shift yang sedang berjalan pada [jam] (0–23), termasuk shift yang melewati tengah malam. */
     fun shiftPada(jam: Int): Int {

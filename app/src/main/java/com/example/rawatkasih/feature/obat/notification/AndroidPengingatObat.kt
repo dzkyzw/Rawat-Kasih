@@ -44,7 +44,8 @@ internal class AndroidPengingatObat(context: Context) : PengingatObat {
         }
 
         val kunciStok = "${rencana.namaLansia}:${rencana.statusStok}:${rencana.stok}"
-        when (rencana.statusStok) {
+        // Lansia tanpa jadwal obat belum membutuhkan stok, jadi tidak perlu peringatan restock.
+        when (rencana.statusStok.takeIf { rencana.jadwal.isNotEmpty() } ?: StatusStok.AMAN) {
             StatusStok.HABIS -> if (kunciStok != kunciStokTerakhir) {
                 kunciStokTerakhir = kunciStok
                 kirim(

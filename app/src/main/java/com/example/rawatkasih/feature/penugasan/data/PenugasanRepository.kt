@@ -63,7 +63,11 @@ internal class PenugasanRepository(private val auth: FirebaseAuth, private val f
         val jadwal = (d.get("jadwal") as? Map<*, *>).orEmpty().mapNotNull { (jam, isi) ->
             val dosis = isi as? Map<*, *> ?: return@mapNotNull null
             val status = runCatching { StatusJadwal.valueOf(dosis["status"] as String) }.getOrNull() ?: return@mapNotNull null
-            JadwalObat(jam as String, dosis["waktu"] as? String ?: "", status)
+            // Sama dengan Fungsi 1: konfirmasi kemarin tidak menutup jadwal hari ini.
+            val hariIni = com.example.rawatkasih.feature.obat.model.statusHariIni(
+                status, (dosis["dicatatPada"] as? com.google.firebase.Timestamp)?.toDate()?.time
+            )
+            JadwalObat(jam as String, dosis["waktu"] as? String ?: "", hariIni)
         }.sortedBy { it.jam }
         val nama = d.getString("namaLansia") ?: return@map null
         RencanaObat(nama, d.getLong("stok")?.toInt() ?: 0, d.getLong("batasStok")?.toInt() ?: 0, jadwal)

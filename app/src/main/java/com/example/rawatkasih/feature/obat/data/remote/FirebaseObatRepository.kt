@@ -5,6 +5,7 @@ import com.example.rawatkasih.feature.obat.data.SumberObat
 import com.example.rawatkasih.feature.obat.model.JadwalObat
 import com.example.rawatkasih.feature.obat.model.RencanaObat
 import com.example.rawatkasih.feature.obat.model.StatusJadwal
+import com.example.rawatkasih.feature.obat.model.statusHariIni
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
@@ -186,11 +187,15 @@ internal class FirebaseObatRepository(
             batasStok = checkNotNull(dokumen.getLong("batasStok")).toInt(),
             jadwal = jadwal.entries.map { (jam, data) ->
                 val dosis = data as Map<*, *>
+                val status = statusHariIni(
+                    StatusJadwal.valueOf(dosis["status"] as String),
+                    (dosis["dicatatPada"] as? com.google.firebase.Timestamp)?.toDate()?.time
+                )
                 JadwalObat(
                     jam = jam as String,
                     waktu = dosis["waktu"] as String,
-                    status = StatusJadwal.valueOf(dosis["status"] as String),
-                    alasanPenolakan = dosis["alasanPenolakan"] as? String ?: ""
+                    status = status,
+                    alasanPenolakan = if (status == StatusJadwal.BELUM_DIKONFIRMASI) "" else dosis["alasanPenolakan"] as? String ?: ""
                 )
             }.sortedBy { it.jam },
             bisaMengubah = bisaMengubah

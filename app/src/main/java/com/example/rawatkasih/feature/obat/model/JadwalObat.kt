@@ -6,6 +6,23 @@ internal enum class StatusJadwal {
     DILEWATI
 }
 
+/**
+ * Konfirmasi obat berlaku untuk hari itu saja: status yang dicatat sebelum tengah malam hari ini kembali
+ * "belum dikonfirmasi" supaya jadwal yang sama bisa diberikan lagi besok. [dicatatPada] null (data lama atau
+ * stempel waktu server yang belum tiba) dibiarkan apa adanya.
+ */
+internal fun statusHariIni(status: StatusJadwal, dicatatPada: Long?, sekarang: Long = System.currentTimeMillis()): StatusJadwal {
+    if (status == StatusJadwal.BELUM_DIKONFIRMASI || dicatatPada == null) return status
+    val tengahMalam = java.util.Calendar.getInstance().apply {
+        timeInMillis = sekarang
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    return if (dicatatPada < tengahMalam) StatusJadwal.BELUM_DIKONFIRMASI else status
+}
+
 internal enum class StatusStok {
     AMAN,
     MENIPIS,

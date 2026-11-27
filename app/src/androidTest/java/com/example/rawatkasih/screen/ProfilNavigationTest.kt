@@ -25,8 +25,8 @@ class ProfilNavigationTest {
     fun ketigaPeranMembukaGantiKataSandiDariProfil() {
         assumeTrue(BuildConfig.FIREBASE_EMULATOR)
         cekProfil("admin@rawatkasih.test", "Admin", "Profil")
-        cekProfil("keluarga@rawatkasih.test", "Keluarga", "Profil")
-        cekProfil("pramurukti@rawatkasih.test", "Pramurukti", "Akun", lansia = "Oma Ratih")
+        cekAkunKerangka("keluarga@rawatkasih.test", "Keluarga")
+        cekAkunKerangka("pramurukti@rawatkasih.test", "Pramurukti")
     }
 
     private fun cekProfil(email: String, peran: String, tombolProfil: String, lansia: String? = null) {
@@ -52,6 +52,25 @@ class ProfilNavigationTest {
 
         tungguTombol(tombolProfil)
         compose.onNodeWithText("Ganti kata sandi").assertDoesNotExist()
+        compose.onNodeWithText("Keluar").performClick()
+    }
+
+    /** Keluarga dan pramurukti memakai kerangka bottom navigation: Akun adalah tab, bukan layar Profil terpisah. */
+    private fun cekAkunKerangka(email: String, peran: String) {
+        tungguTombol("Masuk ke Rawat Kasih")
+        val kolom = compose.onAllNodes(hasSetTextAction())
+        kolom[0].performTextInput(email)
+        kolom[1].performTextInput("RawatKasih-Demo-Lokal")
+        compose.onNodeWithText("Masuk").performClick()
+
+        tungguTombol("Akun")
+        compose.onNodeWithText("Ganti kata sandi").assertDoesNotExist()
+        compose.onNodeWithText("Akun").performClick()
+        compose.onNodeWithText(email).assertIsDisplayed()
+        compose.onNodeWithText(peran).assertIsDisplayed()
+        compose.onNodeWithText("Ganti kata sandi").performClick()
+        compose.onNodeWithText("Kata sandi lama").assertIsDisplayed()
+        compose.onNodeWithText("Batal").performClick()
         compose.onNodeWithText("Keluar").performClick()
     }
 

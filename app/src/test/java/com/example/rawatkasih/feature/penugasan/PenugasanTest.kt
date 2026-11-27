@@ -29,6 +29,12 @@ class PenugasanTest {
         assertEquals(2, pola.shiftPada(3))
         assertEquals("23.00–07.00", pola.rentang(2))
         assertEquals(0, PolaShift(listOf(7)).shiftPada(2)) // satu shift = sepanjang hari
+        assertEquals("24 jam", PolaShift(listOf(7)).rentang(0))
+        // Batas jam: shift berganti tepat pada jam mulainya.
+        assertEquals(0, pola.shiftPada(14))
+        assertEquals(1, pola.shiftPada(15))
+        assertEquals(2, pola.shiftPada(0))
+        assertEquals(2, pola.shiftPada(6))
     }
 
     @Test

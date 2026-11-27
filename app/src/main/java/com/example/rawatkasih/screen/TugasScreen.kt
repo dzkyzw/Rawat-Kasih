@@ -9,9 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -32,9 +30,6 @@ import com.example.rawatkasih.ui.components.GayaIsi
 import com.example.rawatkasih.ui.components.GayaKeterangan
 import com.example.rawatkasih.ui.components.KartuGaris
 import com.example.rawatkasih.ui.components.KepalaLayar
-import com.example.rawatkasih.ui.components.PramuruktiBottomBar
-import com.example.rawatkasih.ui.components.TabPramurukti
-import com.example.rawatkasih.ui.components.TemaRawat
 import com.example.rawatkasih.ui.components.TombolGaris
 import com.example.rawatkasih.ui.components.WarnaGalat
 import com.example.rawatkasih.ui.components.WarnaSekunder
@@ -49,37 +44,33 @@ import java.util.Locale
  * supaya tidak tercampur.
  */
 @Composable
-internal fun TugasRoute(
+internal fun TugasKonten(
     viewModel: CatatanViewModel,
+    padding: PaddingValues,
     onObat: (String) -> Unit,
     onCatatan: (String?) -> Unit,
-    onProfil: () -> Unit,
-    onKeluar: () -> Unit,
-    onVital: ((String) -> Unit)? = null
+    onVital: (String) -> Unit,
+    onGaleri: (String) -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    TemaRawat {
-        Scaffold(bottomBar = {
-            PramuruktiBottomBar(
-                tabAktif = TabPramurukti.LANSIA,
-                tabTersedia = setOf(TabPramurukti.LANSIA, TabPramurukti.CATATAN, TabPramurukti.AKUN),
-                onPilihTab = { tab ->
-                    when (tab) {
-                        TabPramurukti.CATATAN -> onCatatan(null)
-                        TabPramurukti.AKUN -> onProfil()
-                        else -> Unit
-                    }
-                }
-            )
-        }) { padding ->
-            if (!state.dimuat && !state.gagalMemuat) {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else {
-                Tugas(state, padding, onObat, onCatatan, onVital, onKeluar, viewModel::muat)
-            }
-        }
+    if (!state.dimuat && !state.gagalMemuat) {
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+    } else {
+        Tugas(state, padding, onObat, onCatatan, onVital, onGaleri, viewModel::muat)
     }
 }
+
+/** Lansia dampingan yang sedang berjalan (satu per lansia), dipakai Tugas dan Beranda. */
+internal fun tugasPerLansia(state: CatatanUiState): Pair<List<TugasLansia>, List<TugasLansia>> =
+    state.tugasSaya.groupBy { it.lansia.id }.values.map { daftar ->
+        daftar.firstOrNull { AturanPenugasan.sedangBertugas(it.tugas, state.shiftSekarang) } ?: daftar.first()
+    }.partition { AturanPenugasan.sedangBertugas(it.tugas, state.shiftSekarang) }
+
+/** Apakah catatan shift (atau hari ini, untuk penuh waktu) untuk tugas ini sudah ditulis. */
+internal fun catatanSudahDitulis(item: TugasLansia, state: CatatanUiState, sekarang: Calendar = Calendar.getInstance()) =
+    AturanPenugasan.awalTugas(item.tugas, state.pola, sekarang).let { awal ->
+        state.semua.any { it.lansiaId == item.lansia.id && it.penulisId == item.tugas.pramuruktiId && it.waktu >= awal }
+    }
 
 @Composable
 private fun Tugas(
@@ -87,17 +78,15 @@ private fun Tugas(
     padding: PaddingValues,
     onObat: (String) -> Unit,
     onCatatan: (String?) -> Unit,
-    onVital: ((String) -> Unit)?,
-    onKeluar: () -> Unit,
+    onVital: (String) -> Unit,
+    onGaleri: (String) -> Unit,
     onMuatUlang: () -> Unit
 ) {
     val pola = state.pola
     val sekarang = Calendar.getInstance()
     // Satu kartu per lansia; bila ia memegang beberapa shift, yang sedang berjalan diutamakan.
-    val perLansia = state.tugasSaya.groupBy { it.lansia.id }.values.map { daftar ->
-        daftar.firstOrNull { AturanPenugasan.sedangBertugas(it.tugas, state.shiftSekarang) } ?: daftar.first()
-    }
-    val (aktif, nanti) = perLansia.partition { AturanPenugasan.sedangBertugas(it.tugas, state.shiftSekarang) }
+    val (aktif, nanti) = tugasPerLansia(state)
+    val perLansia = aktif + nanti
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -106,7 +95,7 @@ private fun Tugas(
     ) {
         item {
             KepalaLayar(
-                "Tugas saya · ${state.email}", "Lansia dampingan",
+                "Lansia", "Lansia dampingan",
                 "Sekarang ${pola.nama(state.shiftSekarang).lowercase(Locale.ROOT)} (${pola.rentang(state.shiftSekarang)}) · " +
                     "${aktif.size} dari ${perLansia.size} lansia menjadi tanggungan Anda saat ini."
             )
@@ -129,17 +118,11 @@ private fun Tugas(
         }
         if (aktif.isNotEmpty()) {
             item { Judul("Sedang bertugas (${aktif.size})") }
-            items(aktif, key = { "aktif-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, true, onObat, onCatatan, onVital) }
+            items(aktif, key = { "aktif-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, true, onObat, onCatatan, onVital, onGaleri) }
         }
         if (nanti.isNotEmpty()) {
             item { Judul("Di luar jam shift Anda (${nanti.size})") }
-            items(nanti, key = { "nanti-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, false, onObat, onCatatan, onVital) }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onMuatUlang) { Text("Muat ulang") }
-                TextButton(onClick = onKeluar) { Text("Keluar") }
-            }
+            items(nanti, key = { "nanti-" + it.lansia.id }) { KartuTugas(it, state, pola, sekarang, false, onObat, onCatatan, onVital, onGaleri) }
         }
     }
 }
@@ -158,7 +141,8 @@ private fun KartuTugas(
     bertugas: Boolean,
     onObat: (String) -> Unit,
     onCatatan: (String?) -> Unit,
-    onVital: ((String) -> Unit)?
+    onVital: (String) -> Unit,
+    onGaleri: (String) -> Unit
 ) {
     val id = item.lansia.id
     val tugas = item.tugas
@@ -183,9 +167,10 @@ private fun KartuTugas(
             },
             style = GayaIsi
         )
-        when (obat?.statusStok) {
+        // Lansia baru tanpa jadwal obat belum perlu stok; peringatan hanya bila ada jadwal.
+        when (obat?.statusStok.takeIf { obat?.jadwal?.isNotEmpty() == true }) {
             StatusStok.HABIS -> Text("Stok obat habis · segera isi ulang", style = GayaIsi, color = WarnaGalat, fontWeight = FontWeight.Bold)
-            StatusStok.MENIPIS -> Text("Stok menipis · sisa ${obat.stok} dosis", style = GayaIsi, fontWeight = FontWeight.Bold)
+            StatusStok.MENIPIS -> Text("Stok menipis · sisa ${obat?.stok} dosis", style = GayaIsi, fontWeight = FontWeight.Bold)
             else -> Unit
         }
         if (bertugas) {
@@ -197,12 +182,14 @@ private fun KartuTugas(
                 fontWeight = if (catatanSaya != null) FontWeight.Normal else FontWeight.Bold
             )
         }
+        // Empat fungsi per lansia dalam kisi 2×2 supaya label tidak terpotong di layar sempit.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TombolGaris("Obat", { onObat(id) }, Modifier.weight(1f))
             TombolGaris("Catatan", { onCatatan(id) }, Modifier.weight(1f))
-            if (onVital != null) {
-                TombolGaris("Vital", { onVital(id) }, Modifier.weight(1f))
-            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TombolGaris("Vital sign", { onVital(id) }, Modifier.weight(1f))
+            TombolGaris("Galeri fisik", { onGaleri(id) }, Modifier.weight(1f))
         }
     }
 }

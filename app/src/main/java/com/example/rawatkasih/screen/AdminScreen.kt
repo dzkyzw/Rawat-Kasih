@@ -56,7 +56,8 @@ internal fun AdminRoute(
     onProfil: () -> Unit,
     onKeluar: () -> Unit,
     panelShift: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> },
-    panelVital: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> }
+    panelVital: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> },
+    panelKunjungan: @Composable (AdminUiState, Boolean) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -79,6 +80,7 @@ internal fun AdminRoute(
                 FilterChip(selected = tab == 1, enabled = aktif, onClick = { tab = 1 }, label = { Text("Pramurukti") })
                 FilterChip(selected = tab == 2, enabled = aktif, onClick = { tab = 2 }, label = { Text("Shift") })
                 FilterChip(selected = tab == 3, enabled = aktif, onClick = { tab = 3 }, label = { Text("Vital") })
+                FilterChip(selected = tab == 4, enabled = aktif, onClick = { tab = 4 }, label = { Text("Kunjungan") })
             }
             if (!aktif) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.gagalMemuat?.let {
@@ -91,6 +93,7 @@ internal fun AdminRoute(
                 1 -> PanelPramurukti(state, aktif, viewModel)
                 2 -> panelShift(state, aktif)
                 3 -> panelVital(state, aktif)
+                4 -> panelKunjungan(state, aktif)
                 else -> PanelLansia(state, aktif, viewModel)
             }
         }

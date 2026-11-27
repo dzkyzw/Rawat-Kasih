@@ -82,7 +82,9 @@ internal fun ObatRoute(
     // Fungsi 3 · monitoring & analisis tren vital sign medis (Pramurukti & Keluarga).
     vitalContent: (@Composable (onKembali: () -> Unit, onProfil: () -> Unit, onTugas: () -> Unit, onCatatan: () -> Unit) -> Unit)? = null,
     onPilihVitalLansia: ((String) -> Unit)? = null,
-    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)? = null
+    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)? = null,
+    // Kerangka pramurukti: bottom bar selalu lengkap dan tab ditangani kerangka.
+    navPramurukti: ((TabPramurukti) -> Unit)? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.perluMasuk) {
@@ -140,7 +142,7 @@ internal fun ObatRoute(
                     state.lansiaId?.let { onPilihVitalLansia?.invoke(it) }
                     vitalTerbuka = true
                 }.takeIf { vitalContent != null && (state.peranAkun == "PRAMURUKTI" || state.peranAkun == "KELUARGA") }
-                KontenObat(state, viewModel, bukaProfil, bukaCatatan, bukaVital, tugasContent, portalVitalKeluarga)
+                KontenObat(state, viewModel, bukaProfil, bukaCatatan, bukaVital, tugasContent, portalVitalKeluarga, navPramurukti)
             }
         }
     }
@@ -154,7 +156,8 @@ private fun KontenObat(
     bukaCatatan: (() -> Unit)?,
     bukaVital: (() -> Unit)?,
     tugasContent: (@Composable ((String) -> Unit, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit)?,
-    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)?
+    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)?,
+    navPramurukti: ((TabPramurukti) -> Unit)?
 ) {
     val daftar = state.daftarLansia
     if (daftar != null && tugasContent != null && bukaCatatan != null) {
@@ -206,7 +209,8 @@ private fun KontenObat(
             onSimpanPengaturan = if (viewModel.modeOnline) viewModel::simpanPengaturan else null,
             onCatatan = bukaCatatan,
             onVital = bukaVital,
-            portalVitalKeluarga = portalVitalKeluarga
+            portalVitalKeluarga = portalVitalKeluarga,
+            navPramurukti = navPramurukti
         )
     } else {
         MaterialTheme(colorScheme = SkemaObat) {
@@ -255,7 +259,8 @@ private fun ObatScreen(
     onSimpanPengaturan: ((Int, Int?, String?, String?) -> Unit)? = null,
     onCatatan: (() -> Unit)? = null,
     onVital: (() -> Unit)? = null,
-    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)? = null
+    portalVitalKeluarga: (@Composable (onBukaVital: () -> Unit) -> Unit)? = null,
+    navPramurukti: ((TabPramurukti) -> Unit)? = null
 ) {
     var jamKonfirmasi by rememberSaveable { mutableStateOf<String?>(null) }
     var bukaStok by rememberSaveable { mutableStateOf(false) }
@@ -263,7 +268,12 @@ private fun ObatScreen(
 
     MaterialTheme(colorScheme = SkemaObat) {
         Scaffold(bottomBar = {
-            if (state.bisaMengubah) {
+            if (state.bisaMengubah && navPramurukti != null) {
+                PramuruktiBottomBar(
+                    tabAktif = TabPramurukti.LANSIA,
+                    onPilihTab = navPramurukti.takeIf { statusSimpan != StatusSimpanObat.MENYIMPAN }
+                )
+            } else if (state.bisaMengubah) {
                 PramuruktiBottomBar(
                     tabAktif = TabPramurukti.BERANDA,
                     tabTersedia = setOfNotNull(
@@ -294,8 +304,8 @@ private fun ObatScreen(
                         Text("Jadwal obat", Modifier.semantics { heading() }, style = GayaJudul)
                         val keterangan = when {
                             onKeluar == null -> "Senin, 16 November · Data contoh"
-                            state.bisaMengubah -> "Demo online · Pramurukti"
-                            else -> "Demo online · Keluarga"
+                            state.bisaMengubah -> "Pramurukti"
+                            else -> "Keluarga"
                         }
                         Text(keterangan, style = GayaIsi, color = WarnaSekunder)
                         if (onKeluar != null && onMuatUlang != null) {
@@ -304,7 +314,8 @@ private fun ObatScreen(
                                 TextButton(onClick = onMuatUlang, enabled = bisaKlik && !sedangMuatUlang) {
                                     Text(if (sedangMuatUlang) "Memuat…" else "Muat ulang")
                                 }
-                                TextButton(onClick = onKeluar, enabled = bisaKlik) { Text("Keluar") }
+                                // Di kerangka pramurukti, Keluar ada di tab Akun.
+                                if (navPramurukti == null) TextButton(onClick = onKeluar, enabled = bisaKlik) { Text("Keluar") }
                             }
                         }
                         if (onProfil != null && !state.bisaMengubah) {
@@ -312,7 +323,7 @@ private fun ObatScreen(
                                 Text("Profil")
                             }
                         }
-                        if (onGantiLansia != null || (onVital != null && state.bisaMengubah)) {
+                        if (navPramurukti == null && (onGantiLansia != null || (onVital != null && state.bisaMengubah))) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (onGantiLansia != null) {
                                     OutlinedButton(
@@ -338,11 +349,16 @@ private fun ObatScreen(
                     if (jadwal != null) {
                         KartuRingkasan(
                             "${jadwal.jam} · Jadwal ${jadwal.waktu.lowercase(Locale.ROOT)}",
-                            "Nama obat · Dosis sesuai resep\nSesudah makan · Belum dikonfirmasi"
+                            // Teks contoh hanya untuk mode demo tanpa Firebase.
+                            if (onKeluar == null) "Nama obat · Dosis sesuai resep\nSesudah makan · Belum dikonfirmasi" else "Belum dikonfirmasi"
                         )
                     } else {
                         if (state.jadwal.isEmpty()) {
-                            KartuRingkasan("Belum ada jadwal obat", "Jadwal muncul setelah ditambahkan oleh pramurukti.")
+                            KartuRingkasan(
+                                "Belum ada jadwal obat",
+                                if (state.bisaMengubah) "Tambahkan jam minum obat lewat Kelola jadwal & stok."
+                                else "Jadwal muncul setelah ditambahkan oleh pramurukti."
+                            )
                         } else {
                             KartuRingkasan("Jadwal hari ini selesai", "Semua jadwal sudah dikonfirmasi.")
                         }
@@ -357,7 +373,8 @@ private fun ObatScreen(
                     }
                 }
                 item {
-                    val (judulStok, isiStok, warnaBatasStok) = when (state.statusStok) {
+                    // Tanpa jadwal obat, stok 0 belum berarti darurat.
+                    val (judulStok, isiStok, warnaBatasStok) = when (state.statusStok.takeIf { state.jadwal.isNotEmpty() } ?: StatusStok.AMAN) {
                         StatusStok.HABIS -> Triple(
                             "Obat habis",
                             "Sisa 0 dosis · Segera lakukan restock darurat",
@@ -384,7 +401,8 @@ private fun ObatScreen(
                         }
                     }
                 }
-                item {
+                // Judul riwayat hanya tampil bila sudah ada pemberian yang tercatat.
+                if (state.riwayat.isNotEmpty()) item {
                     Text(
                         if (onKeluar == null) "Riwayat hari ini" else "Riwayat pemberian",
                         Modifier.semantics { heading() },

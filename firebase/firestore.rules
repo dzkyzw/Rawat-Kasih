@@ -7,6 +7,11 @@
 // vitalSign/{rencanaId}/catatan/{id}: sistol, diastol, gulaDarah, statusRisiko, penulisUid, penulisEmail, waktu.
 // Fungsi 4 · Galeri fisik & SOP P3K (dokumentasi tidak pernah dihapus):
 // galeriFisik/{rencanaId}/foto/{id}: metadata + thumbnail; subkoleksi gambar/{0..2}, tindakLanjut/{id}, koreksi/v{n}.
+// Kerangka keluarga:
+// kunjungan/{rencanaId}/permintaan/{id}: tanggal, jam, jumlahOrang, catatan, status, pengaju;
+//   pengelola mengisi alasan/ditanganiOlehEmail/ditanganiPada saat menyetujui atau menolak.
+// pengaturanPanti/kontak: noWa panti (opsional, diisi pengelola).
+// kontakKeluarga/{rencanaId}: noWa, email, uid keluarga (opsional, diisi akun keluarga sendiri).
 // lansiaP04/{rencanaId}: namaLansia, kamar, and an optional primary family account.
 // rencanaObat/{rencanaId}: namaLansia, stok, batasStok, jadwal and aksi.
 rules_version = '2';
@@ -88,7 +93,10 @@ service cloud.firestore {
     function validKonfirmasi(lama, baru, jam) {
       return jamValid(jam) && jam in lama.jadwal && jam in baru.jadwal
         && baru.jadwal.diff(lama.jadwal).affectedKeys().hasOnly([jam])
-        && lama.jadwal[jam].status == 'BELUM_DIKONFIRMASI'
+        // Konfirmasi berlaku per hari (WIB): jadwal yang dikonfirmasi kemarin boleh dikonfirmasi lagi hari ini.
+        && (lama.jadwal[jam].status == 'BELUM_DIKONFIRMASI'
+          || (lama.jadwal[jam].get('dicatatPada', null) is timestamp
+            && (lama.jadwal[jam].dicatatPada + duration.value(7, 'h')).date() < (request.time + duration.value(7, 'h')).date()))
         && baru.jadwal[jam].keys().hasOnly(['waktu', 'status', 'dicatatOleh', 'dicatatPada', 'alasanPenolakan'])
         && baru.jadwal[jam].waktu == lama.jadwal[jam].waktu
         && baru.jadwal[jam].dicatatOleh == request.auth.uid
@@ -320,6 +328,62 @@ service cloud.firestore {
         allow get, list: if bacaGaleri(id);
         allow create: if request.auth != null && pramurukti(id) && validKoreksi(request.resource.data, id, fotoId, koreksiId);
       }
+    }
+
+    // ---------------- Kerangka keluarga · kunjungan & WhatsApp ----------------
+    function waValid(no) {
+      return no is string && no.matches('^62[0-9]{8,13}$');
+    }
+
+    match /pengaturanPanti/kontak {
+      allow get: if request.auth != null;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['noWa']) && waValid(request.resource.data.noWa);
+    }
+
+    match /kontakKeluarga/{id} {
+      allow get: if admin() || (request.auth != null && (pramurukti(id) || keluarga(id)));
+      allow list: if admin();
+      allow create, update: if request.auth != null && keluarga(id)
+        && request.resource.data.keys().hasOnly(['noWa', 'email', 'uid'])
+        && waValid(request.resource.data.noWa)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    function validKunjungan(data) {
+      return data.keys().hasOnly(['tanggal', 'jam', 'jumlahOrang', 'catatan', 'status', 'pengajuUid', 'pengajuEmail', 'dibuatPada'])
+        && data.keys().hasAll(['tanggal', 'jam', 'jumlahOrang', 'catatan', 'status', 'pengajuUid', 'pengajuEmail', 'dibuatPada'])
+        && data.tanggal is string && data.tanggal.matches('^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+        && data.jam in ['09.00', '10.00', '11.00', '13.00', '14.00', '15.00', '16.00']
+        && data.jumlahOrang is int && data.jumlahOrang >= 1 && data.jumlahOrang <= 5
+        && data.catatan is string && data.catatan.size() <= 200
+        && data.status == 'MENUNGGU'
+        && data.pengajuUid == request.auth.uid
+        && data.pengajuEmail == request.auth.token.email
+        && data.dibuatPada == request.time;
+    }
+
+    match /kunjungan/{id}/permintaan/{permintaanId} {
+      allow get, list: if admin() || (request.auth != null && (pramurukti(id) || keluarga(id)));
+      allow create: if request.auth != null && keluarga(id) && validKunjungan(request.resource.data);
+      // Pengelola menyetujui atau menolak, sekali, selama masih menunggu.
+      allow update: if admin() && resource.data.status == 'MENUNGGU'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'alasan', 'ditanganiOlehEmail', 'ditanganiPada'])
+        && request.resource.data.status in ['DISETUJUI', 'DITOLAK']
+        && request.resource.data.alasan is string && request.resource.data.alasan.size() <= 200
+        && request.resource.data.ditanganiOlehEmail == request.auth.token.email
+        && request.resource.data.ditanganiPada == request.time;
+      // Keluarga membatalkan permintaannya sendiri yang masih berlaku.
+      allow update: if request.auth != null && keluarga(id)
+        && resource.data.pengajuUid == request.auth.uid
+        && resource.data.status in ['MENUNGGU', 'DISETUJUI']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status == 'DIBATALKAN';
+    }
+
+    // Pengelola melihat semua permintaan kunjungan di panti sekaligus (collection group).
+    match /{jalur=**}/permintaan/{permintaanId} {
+      allow list: if admin();
     }
   }
 }
