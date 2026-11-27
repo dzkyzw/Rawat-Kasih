@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.rawatkasih.data.local.RawatKasihDatabase
@@ -24,18 +25,24 @@ import com.example.rawatkasih.feature.obat.data.ObatRepository
 import com.example.rawatkasih.feature.obat.data.remote.FirebaseObatRepository
 import com.example.rawatkasih.feature.obat.notification.AndroidPengingatObat
 import com.example.rawatkasih.feature.penugasan.data.PenugasanRepository
+import com.example.rawatkasih.feature.vitalsign.data.VitalSignRepository
 import com.example.rawatkasih.screen.AdminRoute
 import com.example.rawatkasih.screen.CatatanRoute
 import com.example.rawatkasih.screen.HandoverRoute
+import com.example.rawatkasih.screen.KartuPortalVitalKeluarga
 import com.example.rawatkasih.screen.ObatRoute
 import com.example.rawatkasih.screen.ShiftAdminPanel
 import com.example.rawatkasih.screen.SplashScreen
 import com.example.rawatkasih.screen.TugasRoute
+import com.example.rawatkasih.screen.VitalAdminPanel
+import com.example.rawatkasih.screen.VitalSignRoute
 import com.example.rawatkasih.ui.admin.AdminViewModel
 import com.example.rawatkasih.ui.catatan.CatatanViewModel
 import com.example.rawatkasih.ui.catatan.ShiftAdminViewModel
 import com.example.rawatkasih.ui.obat.ObatViewModel
 import com.example.rawatkasih.ui.theme.RawatKasihTheme
+import com.example.rawatkasih.ui.vitalsign.VitalAdminViewModel
+import com.example.rawatkasih.ui.vitalsign.VitalSignViewModel
 
 class MainActivity : ComponentActivity() {
     private val obatViewModel: ObatViewModel by viewModels {
@@ -80,6 +87,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Fungsi 3 · Monitoring & analisis tren vital sign medis (mode online Firebase).
+    private val vitalSignViewModel: VitalSignViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val firebase = checkNotNull(FirebaseP04.ambil(applicationContext))
+                VitalSignViewModel(VitalSignRepository(firebase.firestore), PenugasanRepository(firebase.auth, firebase.firestore))
+            }
+        }
+    }
+
+    private val vitalAdminViewModel: VitalAdminViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val firebase = checkNotNull(FirebaseP04.ambil(applicationContext))
+                VitalAdminViewModel(VitalSignRepository(firebase.firestore))
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -113,11 +139,12 @@ class MainActivity : ComponentActivity() {
                             adminViewModel.reset()
                             obatViewModel.keluar()
                         },
-                        panelShift = { admin, aktif -> ShiftAdminPanel(shiftAdminViewModel, admin, aktif, onBerubah = adminViewModel::muat) }
+                        panelShift = { admin, aktif -> ShiftAdminPanel(shiftAdminViewModel, admin, aktif, onBerubah = adminViewModel::muat) },
+                        panelVital = { admin, aktif -> VitalAdminPanel(vitalAdminViewModel, admin, aktif) }
                     )
                 },
                 catatanContent = { kembali, bukaProfil, bukaTugas -> CatatanRoute(catatanViewModel, kembali, bukaProfil, bukaTugas) },
-                tugasContent = { pilih, keluar, bukaProfil, bukaCatatan ->
+                tugasContent = { pilih, keluar, bukaProfil, bukaCatatan, bukaVital ->
                     TugasRoute(
                         catatanViewModel,
                         onObat = pilih,
@@ -126,8 +153,20 @@ class MainActivity : ComponentActivity() {
                             bukaCatatan()
                         },
                         onProfil = bukaProfil,
-                        onKeluar = keluar
+                        onKeluar = keluar,
+                        onVital = { id ->
+                            vitalSignViewModel.pilihLansia(id)
+                            bukaVital()
+                        }
                     )
+                },
+                vitalContent = { kembali, bukaProfil, bukaTugas, bukaCatatan ->
+                    VitalSignRoute(vitalSignViewModel, kembali, bukaProfil, bukaTugas, bukaCatatan)
+                },
+                onPilihVitalLansia = vitalSignViewModel::pilihLansia,
+                portalVitalKeluarga = { onBukaVital ->
+                    val vitalState by vitalSignViewModel.state.collectAsStateWithLifecycle()
+                    KartuPortalVitalKeluarga(vitalState.ringkasanAktif(), onBukaVital)
                 }
             )
         }

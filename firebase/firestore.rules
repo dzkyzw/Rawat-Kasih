@@ -3,6 +3,8 @@
 // pengaturanPanti/shift: jamMulai (jam mulai tiap shift, 1-6 shift).
 // penugasanShift/{rencanaId}: tugas.{uid} = {email, shift: [nomor shift]}; shift kosong = penuh waktu.
 // catatanShift/{rencanaId}/catatan/{id}: catatan shift dan siapa yang sudah membacanya.
+// Fungsi 3 · Monitoring & analisis tren vital sign medis:
+// vitalSign/{rencanaId}/catatan/{id}: sistol, diastol, gulaDarah, statusRisiko, penulisUid, penulisEmail, waktu.
 // lansiaP04/{rencanaId}: namaLansia, kamar, and an optional primary family account.
 // rencanaObat/{rencanaId}: namaLansia, stok, batasStok, jadwal and aksi.
 rules_version = '2';
@@ -184,6 +186,24 @@ service cloud.firestore {
         && request.resource.data.dibacaOlehUid == request.auth.uid
         && request.resource.data.dibacaOlehEmail == request.auth.token.email
         && request.resource.data.dibacaPada == request.time;
+    }
+
+    function validVitalSign(data) {
+      return data.keys().hasOnly(['sistol', 'diastol', 'gulaDarah', 'statusRisiko', 'penulisUid', 'penulisEmail', 'waktu'])
+          && data.keys().hasAll(['sistol', 'diastol', 'gulaDarah', 'statusRisiko', 'penulisUid', 'penulisEmail', 'waktu'])
+          && data.sistol is int && data.sistol >= 50 && data.sistol <= 300
+          && data.diastol is int && data.diastol >= 30 && data.diastol <= 200
+          && data.sistol > data.diastol
+          && data.gulaDarah is int && data.gulaDarah >= 20 && data.gulaDarah <= 600
+          && data.statusRisiko in ['NORMAL', 'WASPADA', 'BAHAYA']
+          && data.penulisUid == request.auth.uid
+          && data.penulisEmail == request.auth.token.email
+          && data.waktu == request.time;
+    }
+
+    match /vitalSign/{id}/catatan/{catatanId} {
+      allow get, list: if admin() || (request.auth != null && (pramurukti(id) || keluarga(id)));
+      allow create: if request.auth != null && pramurukti(id) && validVitalSign(request.resource.data);
     }
   }
 }
