@@ -343,13 +343,14 @@ internal fun KartuPortalVitalKeluarga(
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     if (ringkasan?.perluAlertKeluarga == true) "Alert Vital Sign · ${status.label}" else "Vital Sign & Tren 7 Hari",
                     style = GayaBagian,
-                    color = if (ringkasan?.perluAlertKeluarga == true) warna else WarnaTeks
+                    color = if (ringkasan?.perluAlertKeluarga == true) warna else WarnaTeks,
+                    modifier = Modifier.weight(1f)
                 )
                 if (terbaru != null) BadgeRisiko(status)
             }
@@ -399,10 +400,10 @@ internal fun KartuStatusRisikoVital(
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Status risiko: ${status.label}", style = GayaBagian, color = warna)
+                Text("Status risiko: ${status.label}", style = GayaBagian, color = warna, modifier = Modifier.weight(1f))
                 BadgeRisiko(status)
             }
             Text(
@@ -474,10 +475,10 @@ internal fun KartuGrafikTekananDarah(ringkasan: RingkasanTrenVital) {
     KartuGaris {
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Grafik Tekanan Darah (7 Hari)", style = GayaBagian)
+            Text("Grafik Tekanan Darah (7 Hari)", style = GayaBagian, modifier = Modifier.weight(1f))
             BadgeRisiko(ringkasan.statusEfektif)
         }
         Text(
@@ -506,10 +507,10 @@ internal fun KartuGrafikGulaDarah(ringkasan: RingkasanTrenVital) {
     KartuGaris {
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Grafik Gula Darah (7 Hari)", style = GayaBagian)
+            Text("Grafik Gula Darah (7 Hari)", style = GayaBagian, modifier = Modifier.weight(1f))
             BadgeRisiko(ringkasan.statusEfektif)
         }
         Text(
@@ -637,7 +638,7 @@ internal fun KartuRiwayatVital(catatan: CatatanVitalSign) {
     KartuGaris {
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -664,7 +665,14 @@ internal fun BadgeRisiko(status: StatusRisiko) {
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(Modifier.size(8.dp).background(warna, CircleShape))
-        Text(status.label, style = GayaKeterangan, color = warna, fontWeight = FontWeight.Bold)
+        Text(
+            status.label,
+            style = GayaKeterangan,
+            color = warna,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
